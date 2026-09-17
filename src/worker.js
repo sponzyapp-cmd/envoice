@@ -25,6 +25,7 @@ export default {
     const url = new URL(request.url);
     try {
       if (url.pathname === '/health') return json({ ok: true, worker: 'envoice' });
+      if (url.pathname === '/new') return await serveApp(request, env, ctx, 'creator');
       if (url.pathname.startsWith('/api/')) return await handleApi(request, env, ctx, url);
       if (url.pathname.startsWith('/e/')) return await servePublished(request, env, ctx, url);
       if (url.pathname.startsWith('/s/')) return await serveSubmission(request, env, ctx, url);
@@ -54,7 +55,11 @@ async function handleApi(request, env, ctx, url) {
   if (path === '/api/auth/logout' && method === 'POST') return apiLogout(request, env, ctx);
 
   if (path === '/api/envoices' && method === 'POST') return apiCreateEnvoice(request, env, ctx);
+  if (path === '/api/invoices' && method === 'GET') return apiListInvoices(request, env, ctx);
   if (path === '/api/envoices' && method === 'GET') return apiListEnvoices(request, env, ctx);
+  if (path.startsWith('/api/envoices/') && method === 'GET') {
+    return apiGetEnvoice(request, env, ctx, decodeURIComponent(path.slice('/api/envoices/'.length)));
+  }
   if (path.startsWith('/api/envoices/') && method === 'DELETE') {
     return apiDeleteEnvoice(request, env, ctx, decodeURIComponent(path.slice('/api/envoices/'.length)));
   }
@@ -186,6 +191,61 @@ async function apiListEnvoices(request, env, ctx) {
   return json({ ok: true, envoices: rows.map((r) => ({ ...r, url: `/e/${r.id}`, createdAt: r.created_at * 1000 })) });
 }
 
+// One invoice payload for the owner (dashboard detail + PDF).
+async function apiGetEnvoice(request, env, ctx, id) {
+  const session = await getSession(request, env, ctx);
+  if (!session) return json({ error: 'unauthorized' }, 401);
+  if (!id) return json({ error: 'bad_request' }, 400);
+  const row = await getEnvoice(env, id);
+  if (!row) return json({ error: 'not_found' }, 404);
+  if (row.owner_id !== session.user_id) return json({ error: 'forbidden' }, 403);
+  return json({
+    ok: true,
+    id: row.id,
+    url: `/e/${row.id}`,
+    createdAt: row.created_at * 1000,
+    envoice: safeParse(row.payload),
+  });
+}
+
+// The dashboard list: everything this account created, plus everything it
+// filled in as a customer (matched on the submission's customer_email).
+async function apiListInvoices(request, env, ctx) {
+  const session = await getSession(request, env, ctx);
+  if (!session) return json({ error: 'unauthorized' }, 401);
+
+  const owned = await env.DB.prepare(
+    `SELECT e.id, e.title, e.to_name, e.from_name, e.currency, e.total, e.created_at,
+            (SELECT COUNT(*) FROM envoice_submissions s WHERE s.envoice_id = e.id) AS filled
+       FROM envoices e WHERE e.owner_id = ? ORDER BY e.created_at DESC LIMIT 200`,
+  ).bind(session.user_id).all();
+
+  const filled = await env.DB.prepare(
+    `SELECT id, envoice_id, total, submitted_at, payload
+       FROM envoice_submissions WHERE customer_email = ? AND customer_email <> ''
+      ORDER BY submitted_at DESC LIMIT 200`,
+  ).bind(session.email).all();
+
+  const invoices = [
+    ...(owned.results || []).map((r) => ({
+      id: r.id, role: 'owner', title: r.title, to: r.to_name, from: r.from_name,
+      currency: r.currency, total: r.total, createdAt: r.created_at * 1000,
+      url: `/e/${r.id}`, submissions: r.filled,
+    })),
+    ...(filled.results || []).map((r) => {
+      const p = safeParse(r.payload) || {};
+      return {
+        id: r.id, role: 'customer', envoiceId: r.envoice_id,
+        title: p.title || '', to: p.to || '', from: p.from || '',
+        currency: p.currency || 'KES', total: r.total, createdAt: r.submitted_at * 1000,
+        url: `/s/${r.id}`,
+      };
+    }),
+  ].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  return json({ ok: true, email: session.email, role: session.kind, invoices });
+}
+
 async function apiDeleteEnvoice(request, env, ctx, id) {
   const session = await getSession(request, env, ctx);
   if (!session) return json({ error: 'unauthorized' }, 401);
@@ -279,7 +339,7 @@ async function apiGetSubmission(request, env, ctx, id) {
   if (!row) return json({ error: 'not_found' }, 404);
 
   const isOwner = row.owner_id === session.user_id;
-  const isCustomer = session.kind === 'customer' && row.customer_email && row.customer_email === session.email;
+  const isCustomer = Boolean(row.customer_email) && row.customer_email === session.email;
   if (!isOwner && !isCustomer) return json({ error: 'forbidden' }, 403);
 
   return json({
@@ -316,6 +376,11 @@ async function apiClearSubmissions(request, env, ctx) {
 
 // ── HTML serving ─────────────────────────────────────────────────────────────
 
+async function serveApp(request, env, ctx, view) {
+  const html = await loadTemplate(request, env);
+  return htmlResponse(inject(html, `window.__ENVOICE_VIEW__ = ${jsonForScript(view)};`));
+}
+
 async function loadTemplate(request, env) {
   if (templateCache) return templateCache;
   const res = await env.ASSETS.fetch(new URL('/', request.url).toString());
@@ -351,7 +416,7 @@ async function serveSubmission(request, env, ctx, url) {
   const payload = safeParse(row.payload);
   const session = await getSession(request, env, ctx);
   const isOwner = session && session.user_id === row.owner_id;
-  const isCustomer = session && session.kind === 'customer' && row.customer_email && row.customer_email === session.email;
+  const isCustomer = session && Boolean(row.customer_email) && row.customer_email === session.email;
 
   const body = (isOwner || isCustomer)
     ? [

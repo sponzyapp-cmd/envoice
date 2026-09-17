@@ -7,6 +7,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -768,6 +770,8 @@ let owner = null;                 // signed-in user ({ email, kind }) or null
 let inboxCache = [];              // submissions served from D1
 let inboxFromServer = false;      // true once the API answered
 let authOpen = false;             // header sign-in panel visible
+let invoices = [];                // dashboard list (owner + customer rows)
+let viewingInvoice = null;        // payload shown in the invoice detail view
 
 
 
@@ -956,7 +960,7 @@ if (share) {
     envoice = blankEnvoice();
     envoice.tiers.push(blankTier(1));
   }
-  view = 'creator';
+  view = window.__ENVOICE_VIEW__ === 'creator' ? 'creator' : 'dashboard';
 }
 
 if (!envoice.tiers.length) envoice.tiers.push(blankTier(1));
@@ -1007,14 +1011,27 @@ function updateHistoryButtons() {
   if (r) r.disabled = future.length === 0;
 }
 
-// ─── Auto-save ───────────────────────────────────────────────────────────────
+// ─── Auto-save (only while a text field is in use) ───────────────────────────
 if (!baked) {
-  setInterval(() => {
+  let draftTimer = null;
+  const saveDraft = () => {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(envoice));
       flashSaved();
     } catch (e) {}
-  }, 5000);
+  };
+  const isField = (t) => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+  document.addEventListener('input', (e) => {
+    if (!isField(e.target)) return;
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(saveDraft, 1200);
+  }, true);
+  document.addEventListener('focusout', (e) => {
+    if (!isField(e.target)) return;
+    clearTimeout(draftTimer);
+    saveDraft();
+  }, true);
+  window.addEventListener('beforeunload', saveDraft);
 }
 function flashSaved() {
   const p = document.getElementById('savePill');
@@ -1033,7 +1050,9 @@ function flashSaved() {
 const app = document.getElementById('app');
 
 function render() {
-  if (view === 'submission') renderSubmissionView();
+  if (view === 'dashboard') renderDashboard();
+  else if (view === 'invoice') renderInvoiceView();
+  else if (view === 'submission') renderSubmissionView();
   else if (view === 'creator') renderCreator();
   else if (view === 'client') renderClient();
   else if (view === 'submitted') renderSubmitted();
@@ -1069,6 +1088,11 @@ function renderCreator() {
   hdr.appendChild(tools);
 
   if (authOpen && !owner) app.appendChild(renderAuthCard());
+
+  const backToDash = el('button', { class: 'btn-text', type: 'button', style: 'text-align:left;padding:0 0 1.25rem;' });
+  backToDash.textContent = '← My invoices';
+  backToDash.onclick = () => { history.pushState({}, '', '/'); view = 'dashboard'; render(); refreshInvoices(); };
+  app.appendChild(backToDash);
   app.appendChild(hdr);
 
   // Info
@@ -1106,6 +1130,8 @@ function renderCreator() {
   const totalCard = el('div', { class: 'total-card' });
   totalCard.innerHTML = `<span class="total-label">Total preview</span><span class="total-amount"><span class="total-currency">${escapeHtml(envoice.currency)}</span>${fmt(totalAmt)}</span>`;
   app.appendChild(totalCard);
+
+  app.appendChild(pdfButton(() => envoice));
 
   // ── Owner account — where this envoice gets saved ──
   const ownerLabel = el('p', { class: 'section-label' });
@@ -1551,6 +1577,8 @@ function renderClient() {
   submitBtn.onclick = handleSubmit;
   app.appendChild(submitBtn);
 
+  app.appendChild(pdfButton(() => envoice));
+
   if (!baked) {
     const back = el('button', { class: 'btn-secondary', type: 'button' });
     back.textContent = '← Back to editor';
@@ -1764,6 +1792,8 @@ function renderSubmitted() {
   totalCard.innerHTML = `<span class="total-label">Total</span><span class="total-amount"><span class="total-currency">${escapeHtml(envoice.currency)}</span>${fmt(total)}</span>`;
   app.appendChild(totalCard);
 
+  app.appendChild(pdfButton(() => envoice));
+
   // Start over
   if (!baked) {
     const back = el('button', { class: 'btn-secondary', type: 'button' });
@@ -1844,6 +1874,8 @@ function renderSubmissionView() {
   const totalCard = el('div', { class: 'total-card' });
   totalCard.innerHTML = `<span class="total-label">Submitted total</span><span class="total-amount"><span class="total-currency">${escapeHtml(subEnvoice.currency)}</span>${fmt(total)}</span>`;
   app.appendChild(totalCard);
+
+  app.appendChild(pdfButton(() => subEnvoice));
 
   // Owner actions
   const copyBtn = el('button', { class: 'btn-primary', type: 'button' });
@@ -1969,6 +2001,338 @@ function parseWorkbook(wb) {
   }
   return tiers;
 }
+
+// ── Dashboard, invoice detail, PDF ───────────────────────────────────────────
+
+function roleBadge(role) {
+  const b = el('span', { class: 'mode-badge' });
+  b.textContent = role === 'owner' ? 'Owner' : 'Customer';
+  b.style.marginLeft = '0';
+  b.style.flexShrink = '0';
+  if (role === 'owner') {
+    b.style.background = '#fef2f2';
+    b.style.borderColor = '#fecaca';
+    b.style.color = 'var(--red)';
+  } else {
+    b.style.background = 'var(--green-bg)';
+    b.style.borderColor = 'var(--green-border)';
+    b.style.color = 'var(--green)';
+  }
+  return b;
+}
+
+async function refreshInvoices() {
+  if (!owner) { invoices = []; return; }
+  try {
+    const r = await fetch('/api/invoices', { credentials: 'same-origin' });
+    if (!r.ok) return;
+    const d = await r.json();
+    invoices = d.invoices || [];
+    if (view === 'dashboard') render();
+  } catch (e) {}
+}
+
+function goNewInvoice() {
+  history.pushState({}, '', '/new');
+  view = 'creator';
+  render();
+}
+
+function renderDashboard() {
+  app.innerHTML = '';
+
+  const hdr = el('div', { class: 'brand' });
+  hdr.innerHTML = `<span class="brand-e">Envoice</span><span class="brand-tag">${owner ? escapeHtml(owner.email) : 'invoices'}</span>`;
+  const tools = el('div', { class: 'history-tools' });
+
+  const addBtn = el('button', { class: 'btn-history', type: 'button', title: 'Add invoice' });
+  addBtn.textContent = '+';
+  addBtn.style.fontSize = '1.25rem';
+  addBtn.onclick = goNewInvoice;
+  tools.appendChild(addBtn);
+
+  if (!owner) {
+    const authPill = el('button', { class: 'tier-pill', type: 'button', style: 'align-self:center;' });
+    authPill.textContent = authOpen ? 'Close' : 'Sign in';
+    authPill.onclick = () => {
+      authOpen = !authOpen;
+      render();
+      requestAnimationFrame(() => { const f = document.getElementById('authEmail'); if (f) f.focus(); });
+    };
+    tools.appendChild(authPill);
+  }
+  hdr.appendChild(tools);
+  app.appendChild(hdr);
+
+  if (authOpen && !owner) app.appendChild(renderAuthCard());
+
+  const label = el('p', { class: 'section-label' });
+  label.textContent = 'My invoices';
+  app.appendChild(label);
+
+  if (!owner) {
+    const empty = el('div', { class: 'info-banner' });
+    empty.textContent = 'Sign in to keep your invoices, or start one now — an account is only needed when you publish.';
+    app.appendChild(empty);
+  } else if (!invoices.length) {
+    const empty = el('div', { class: 'info-banner' });
+    empty.textContent = 'No invoices yet. Tap + to create your first one.';
+    app.appendChild(empty);
+  } else {
+    const card = el('div', { class: 'card' });
+    invoices.forEach(inv => {
+      const row = el('div', { class: 'inbox-item', type: 'button' });
+      const main = el('div', { class: 'inbox-main' });
+      const name = el('div', { class: 'inbox-name' });
+      name.textContent = inv.title || inv.to || inv.from || 'Invoice';
+      const meta = el('div', { class: 'inbox-meta' });
+      const d = new Date(inv.createdAt || Date.now());
+      const tail = inv.role === 'owner'
+        ? (inv.submissions ? inv.submissions + ' filled' : 'not filled yet')
+        : 'you filled this';
+      meta.textContent = `${d.toLocaleDateString()} · ${tail}`;
+      main.appendChild(name);
+      main.appendChild(meta);
+      row.appendChild(main);
+      row.appendChild(roleBadge(inv.role));
+      const amt = el('div', { class: 'inbox-amount' });
+      amt.textContent = `${inv.currency || 'KES'} ${fmt(inv.total)}`;
+      row.appendChild(amt);
+      const pdf = el('button', { class: 'btn-icon', type: 'button', title: 'Download PDF' });
+      pdf.textContent = '↓';
+      pdf.onclick = async (e) => {
+        e.stopPropagation();
+        const payload = await fetchInvoicePayload(inv);
+        if (!payload) { showToast('Could not load that invoice.'); return; }
+        showToast('Building PDF…');
+        await downloadPdf(payload);
+      };
+      row.appendChild(pdf);
+      const chev = el('div', { class: 'inbox-chev' }); chev.textContent = '›';
+      row.appendChild(chev);
+      row.onclick = () => openInvoice(inv);
+      card.appendChild(row);
+    });
+    app.appendChild(card);
+  }
+
+  const newBtn = el('button', { class: 'btn-primary', type: 'button', style: 'margin-top:1.25rem;' });
+  newBtn.textContent = '+  New invoice';
+  newBtn.onclick = goNewInvoice;
+  app.appendChild(newBtn);
+}
+
+async function fetchInvoicePayload(inv) {
+  const url = inv.role === 'owner'
+    ? '/api/envoices/' + encodeURIComponent(inv.id)
+    : '/api/submissions/' + encodeURIComponent(inv.id);
+  try {
+    const r = await fetch(url, { credentials: 'same-origin' });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return inv.role === 'owner' ? d.envoice : ((d.submission && d.submission.envoice) || null);
+  } catch (e) { return null; }
+}
+
+async function openInvoice(inv) {
+  const payload = await fetchInvoicePayload(inv);
+  if (!payload) { showToast('Could not open that invoice.'); return; }
+  viewingInvoice = { role: inv.role, id: inv.id, url: inv.url, createdAt: inv.createdAt, envoice: payload };
+  view = 'invoice';
+  render();
+}
+
+function appendInvoiceSummary(container, env) {
+  const multi = env.tiers.length > 1;
+  env.tiers.forEach(tier => {
+    if (multi && tier.selected !== true) return;
+    const chosen = tier.items.filter(i => i.checked && (i.name || i.price));
+    if (!chosen.length) return;
+    const card = el('div', { class: 'card' });
+    if (tier.name) {
+      const th = el('div', { class: 'tier-header' });
+      const n = el('p', { style: 'font-size:0.875rem;font-weight:600;' });
+      n.textContent = tier.name;
+      th.appendChild(n);
+      card.appendChild(th);
+    }
+    const list = el('div', { class: 'items-list' });
+    chosen.forEach(item => {
+      const row = el('div', { class: 'item-row' });
+      const main = el('div', { style: 'flex:1;min-width:0;display:flex;flex-direction:column;gap:0.125rem;' });
+      const name = el('span', { class: 'item-name-display' }); name.textContent = item.name;
+      main.appendChild(name);
+      if (item.desc) {
+        const dd = el('span', { class: 'item-desc-display', style: 'font-size:0.75rem;color:var(--text-3);line-height:1.4;' });
+        dd.textContent = item.desc;
+        main.appendChild(dd);
+      }
+      row.appendChild(main);
+      const pw = el('div', { class: 'item-price-wrap' });
+      const c = el('span', { class: 'currency' }); c.textContent = env.currency;
+      pw.appendChild(c);
+      const p = el('span', { class: 'item-price-display' }); p.textContent = fmt(item.price);
+      pw.appendChild(p);
+      row.appendChild(pw);
+      list.appendChild(row);
+    });
+    card.appendChild(list);
+    container.appendChild(card);
+  });
+}
+
+function renderInvoiceView() {
+  app.innerHTML = '';
+  if (!viewingInvoice) { view = 'dashboard'; render(); return; }
+  const env = normalizeEnvoice(viewingInvoice.envoice) || blankEnvoice();
+
+  const hdr = el('div', { class: 'brand' });
+  hdr.innerHTML = `<span class="brand-e">Envoice</span><span class="brand-tag">${viewingInvoice.role === 'owner' ? 'your invoice' : 'you filled this'}</span>`;
+  app.appendChild(hdr);
+
+  const header = el('div', { class: 'submission-header' });
+  const who = el('div', { class: 'who' });
+  who.textContent = env.title || (env.to ? 'Invoice for ' + env.to : 'Invoice');
+  const w = el('div', { class: 'when' });
+  const when = new Date(viewingInvoice.createdAt || Date.now());
+  w.textContent = `${when.toLocaleDateString()} ${when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${env.from ? ' · from ' + env.from : ''}`;
+  header.appendChild(who);
+  header.appendChild(w);
+  const badgeRow = el('div', { style: 'display:flex;margin-top:0.625rem;' });
+  badgeRow.appendChild(roleBadge(viewingInvoice.role));
+  header.appendChild(badgeRow);
+  app.appendChild(header);
+
+  if (env.note) {
+    const note = el('p', { style: 'font-size:0.875rem;color:var(--text-2);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.875rem 1rem;margin-bottom:1.5rem;line-height:1.5;' });
+    note.textContent = env.note;
+    app.appendChild(note);
+  }
+
+  appendInvoiceSummary(app, env);
+
+  const totalCard = el('div', { class: 'total-card' });
+  totalCard.innerHTML = `<span class="total-label">Total</span><span class="total-amount"><span class="total-currency">${escapeHtml(env.currency)}</span>${fmt(totalOf(env))}</span>`;
+  app.appendChild(totalCard);
+
+  app.appendChild(pdfButton(() => env));
+
+  const copyBtn = el('button', { class: 'btn-secondary', type: 'button' });
+  copyBtn.textContent = 'Copy summary as text';
+  copyBtn.onclick = async () => {
+    const ok = await copyToClipboard(buildSubmissionSummary(env, { submittedAt: viewingInvoice.createdAt }));
+    showToast(ok ? 'Summary copied.' : 'Copy failed.');
+  };
+  app.appendChild(copyBtn);
+
+  const back = el('button', { class: 'btn-secondary', type: 'button' });
+  back.textContent = '← My invoices';
+  back.onclick = () => { history.pushState({}, '', '/'); view = 'dashboard'; render(); refreshInvoices(); };
+  app.appendChild(back);
+}
+
+function pdfButton(payloadFn) {
+  const b = el('button', { class: 'btn-secondary', type: 'button' });
+  b.textContent = 'Download PDF';
+  b.onclick = () => downloadPdf(payloadFn());
+  return b;
+}
+
+// Builds the invoice as real DOM using the app's own classes, so the sheet is
+// the same design as the UI, then rasterises it onto A4.
+function invoicePdfNode(env) {
+  const wrap = el('div');
+  wrap.style.position = 'fixed';
+  wrap.style.left = '-10000px';
+  wrap.style.top = '0';
+  wrap.style.width = '720px';
+  wrap.style.padding = '36px';
+  wrap.style.boxSizing = 'border-box';
+  wrap.style.background = '#f9f9f8';
+  wrap.style.color = '#1a1a18';
+  wrap.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
+
+  const brand = el('div', { class: 'brand' });
+  brand.style.marginBottom = '1.75rem';
+  brand.innerHTML = `<span class="brand-e">Envoice</span><span class="brand-tag">${env.from ? 'by ' + escapeHtml(env.from) : 'invoice'}</span>`;
+  wrap.appendChild(brand);
+
+  const head = el('div', { class: 'submission-header' });
+  head.style.marginBottom = '1.25rem';
+  const who = el('div', { class: 'who' });
+  who.textContent = env.title || 'Invoice';
+  const to = el('div', { class: 'what' });
+  to.textContent = 'For ' + (env.to || 'the client') + (env.from ? ' · from ' + env.from : '');
+  const when = el('div', { class: 'when' });
+  when.textContent = new Date().toLocaleDateString();
+  head.appendChild(who);
+  head.appendChild(to);
+  head.appendChild(when);
+  wrap.appendChild(head);
+
+  if (env.note) {
+    const note = el('p', { style: 'font-size:0.8125rem;color:#6b6b67;background:#ffffff;border:1px solid #e5e5e3;border-radius:0.75rem;padding:0.75rem 0.875rem;margin:0 0 1.25rem;line-height:1.5;' });
+    note.textContent = env.note;
+    wrap.appendChild(note);
+  }
+
+  const body = el('div');
+  appendInvoiceSummary(body, env);
+  wrap.appendChild(body);
+
+  const totalCard = el('div', { class: 'total-card' });
+  totalCard.style.marginTop = '1.25rem';
+  totalCard.style.marginBottom = '0';
+  totalCard.innerHTML = `<span class="total-label">Total</span><span class="total-amount"><span class="total-currency">${escapeHtml(env.currency)}</span>${fmt(totalOf(env))}</span>`;
+  wrap.appendChild(totalCard);
+
+  document.body.appendChild(wrap);
+  return wrap;
+}
+
+async function downloadPdf(payload) {
+  const env = normalizeEnvoice(JSON.parse(JSON.stringify(payload || {}))) || blankEnvoice();
+  if (typeof html2canvas === 'undefined' || !window.jspdf || !window.jspdf.jsPDF) {
+    showToast('PDF library not loaded — check your connection.');
+    return;
+  }
+  let node = null;
+  try {
+    node = invoicePdfNode(env);
+    const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+    const pdf = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 28;
+    const imgW = pageW - margin * 2;
+    const imgH = (canvas.height * imgW) / canvas.width;
+    const img = canvas.toDataURL('image/jpeg', 0.95);
+    const usable = pageH - margin * 2;
+    let offset = 0;
+    pdf.addImage(img, 'JPEG', margin, margin - offset, imgW, imgH);
+    while (imgH - offset - usable > 1) {
+      offset += usable;
+      pdf.addPage();
+      pdf.addImage(img, 'JPEG', margin, margin - offset, imgW, imgH);
+    }
+    const base = (env.title || env.to || env.from || 'envoice').toString()
+      .replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
+    pdf.save((base || 'envoice') + '.pdf');
+    showToast('PDF downloaded.');
+  } catch (e) {
+    showToast('Could not build the PDF.');
+  } finally {
+    if (node) node.remove();
+  }
+}
+
+window.addEventListener('popstate', () => {
+  if (view !== 'dashboard' && view !== 'creator' && view !== 'invoice') return;
+  view = location.pathname === '/new' ? 'creator' : 'dashboard';
+  render();
+  if (view === 'dashboard') refreshInvoices();
+});
+
 
 // ── Server state (session + received submissions) ────────────────────────────
 async function refreshSession() {
@@ -2096,6 +2460,7 @@ async function submitAuth(mode) {
     authOpen = false;
     showToast(mode === 'signup' ? 'Account created — you are signed in.' : 'Signed in.');
     await refreshInbox();
+    await refreshInvoices();
     render();
   } catch (e) {
     showToast('No connection. Try again.');
@@ -2160,6 +2525,7 @@ async function publishEnvoice() {
   showToast('Published — link copied.');
   await refreshSession();
   await refreshInbox();
+    await refreshInvoices();
   render();
 }
 
@@ -2268,7 +2634,11 @@ window.__ENVOICE_SUBMITTED__ = window.__ENVOICE_SUBMITTED__;
 render();
 
 if (window.__ENVOICE_MISSING__) showToast('That link no longer exists.');
-if (view === 'creator') refreshSession().then(refreshInbox);
+if (view === 'dashboard') {
+  refreshSession().then(() => { if (owner) refreshInvoices(); });
+} else if (view === 'creator') {
+  refreshSession().then(refreshInbox);
+}
 
 })();
 </script>

@@ -65,7 +65,7 @@ async function handleApi(request, env, ctx, url) {
   }
 
   if (path === '/api/submissions' && method === 'POST') return apiCreateSubmission(request, env, ctx);
-  if (path === '/api/submissions' && method === 'GET') return apiListSubmissions(request, env, ctx);
+  if (path === '/api/submissions' && method === 'GET') return apiListSubmissions(request, env, ctx, url);
   if (path === '/api/submissions' && method === 'DELETE') return apiClearSubmissions(request, env, ctx);
   if (path.startsWith('/api/submissions/') && method === 'GET') {
     return apiGetSubmission(request, env, ctx, decodeURIComponent(path.slice('/api/submissions/'.length)));
@@ -215,7 +215,7 @@ async function apiListInvoices(request, env, ctx) {
   if (!session) return json({ error: 'unauthorized' }, 401);
 
   const owned = await env.DB.prepare(
-    `SELECT e.id, e.title, e.to_name, e.from_name, e.currency, e.total, e.created_at,
+    `SELECT e.id, e.title, e.to_name, e.from_name, e.currency, e.total, e.created_at, e.payload,
             (SELECT COUNT(*) FROM envoice_submissions s WHERE s.envoice_id = e.id) AS filled
        FROM envoices e WHERE e.owner_id = ? ORDER BY e.created_at DESC LIMIT 200`,
   ).bind(session.user_id).all();
@@ -231,6 +231,7 @@ async function apiListInvoices(request, env, ctx) {
       id: r.id, role: 'owner', title: r.title, to: r.to_name, from: r.from_name,
       currency: r.currency, total: r.total, createdAt: r.created_at * 1000,
       url: `/e/${r.id}`, submissions: r.filled,
+      payload: safeParse(r.payload),
     })),
     ...(filled.results || []).map((r) => {
       const p = safeParse(r.payload) || {};
@@ -238,7 +239,7 @@ async function apiListInvoices(request, env, ctx) {
         id: r.id, role: 'customer', envoiceId: r.envoice_id,
         title: p.title || '', to: p.to || '', from: p.from || '',
         currency: p.currency || 'KES', total: r.total, createdAt: r.submitted_at * 1000,
-        url: `/s/${r.id}`,
+        url: `/s/${r.id}`, payload: p,
       };
     }),
   ].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -311,24 +312,44 @@ async function apiCreateSubmission(request, env, ctx) {
   }, 201, headers);
 }
 
-async function apiListSubmissions(request, env, ctx) {
+async function apiListSubmissions(request, env, ctx, url) {
   const session = await getSession(request, env, ctx);
   if (!session) return json({ error: 'unauthorized' }, 401);
+
+  // Scoped to one envoice: the submissions a customer sent for it.
+  const envoiceId = url.searchParams.get('envoiceId');
+  if (envoiceId) {
+    const envoice = await getEnvoice(env, envoiceId);
+    if (!envoice) return json({ error: 'not_found' }, 404);
+    if (envoice.owner_id !== session.user_id) return json({ error: 'forbidden' }, 403);
+    const { results } = await env.DB.prepare(
+      `SELECT id, envoice_id, total, customer_name, customer_email, submitted_at, payload
+         FROM envoice_submissions WHERE envoice_id = ? ORDER BY submitted_at DESC LIMIT 200`,
+    ).bind(envoiceId).all();
+    return json({ ok: true, submissions: (results || []).map(mapSubmission) });
+  }
+
   const rows = await listSubmissions(env, session);
   return json({
     ok: true,
     role: session.kind,
-    submissions: rows.map((r) => ({
-      id: r.id,
-      envoiceId: r.envoice_id,
-      total: r.total,
-      customerName: r.customer_name,
-      customerEmail: r.customer_email,
-      submittedAt: r.submitted_at * 1000,
-      // the client renders inbox rows from this summary; full payload on click
-      summary: payloadSummary(r.payload),
-    })),
+    submissions: rows.map(mapSubmission),
   });
+}
+
+// One shape for a submission everywhere the client reads it, payload included.
+function mapSubmission(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    envoiceId: r.envoice_id,
+    envoice: safeParse(r.payload),
+    total: r.total,
+    customerName: r.customer_name,
+    customerEmail: r.customer_email,
+    submittedAt: r.submitted_at * 1000,
+    summary: payloadSummary(r.payload),
+  };
 }
 
 async function apiGetSubmission(request, env, ctx, id) {

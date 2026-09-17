@@ -772,6 +772,8 @@ let inboxFromServer = false;      // true once the API answered
 let authOpen = false;             // header sign-in panel visible
 let invoices = [];                // dashboard list (owner + customer rows)
 let viewingInvoice = null;        // payload shown in the invoice detail view
+let submissionsCache = {};        // envoiceId -> submissions (kept in memory)
+let submissionReturnTo = null;    // where the back button goes from a submission
 
 
 
@@ -1888,7 +1890,11 @@ function renderSubmissionView() {
 
   const back = el('button', { class: 'btn-secondary', type: 'button' });
   back.textContent = '← Back to editor';
-  back.onclick = () => { if (baked) { location.href = '/'; return; } viewingSubmission = null; view = 'creator'; render(); };
+back.onclick = () => {
+    if (baked) { location.href = '/'; return; }
+    if (submissionReturnTo === 'invoice') { submissionReturnTo = null; view = 'invoice'; render(); return; }
+    viewingSubmission = null; view = 'creator'; render();
+  };
   app.appendChild(back);
 }
 
@@ -2102,7 +2108,7 @@ function renderDashboard() {
       pdf.textContent = '↓';
       pdf.onclick = async (e) => {
         e.stopPropagation();
-        const payload = await fetchInvoicePayload(inv);
+        const payload = inv.payload || await fetchInvoicePayload(inv);
         if (!payload) { showToast('Could not load that invoice.'); return; }
         showToast('Building PDF…');
         await downloadPdf(payload);
@@ -2135,9 +2141,17 @@ async function fetchInvoicePayload(inv) {
 }
 
 async function openInvoice(inv) {
-  const payload = await fetchInvoicePayload(inv);
+  let payload = inv.payload || null;
+  if (!payload) payload = await fetchInvoicePayload(inv);
   if (!payload) { showToast('Could not open that invoice.'); return; }
-  viewingInvoice = { role: inv.role, id: inv.id, url: inv.url, createdAt: inv.createdAt, envoice: payload };
+  viewingInvoice = {
+    role: inv.role,
+    id: inv.id,
+    url: inv.url,
+    createdAt: inv.createdAt,
+    submissions: inv.submissions || 0,
+    envoice: payload
+  };
   view = 'invoice';
   render();
 }
@@ -2226,6 +2240,20 @@ function renderInvoiceView() {
   app.appendChild(copyBtn);
 
   const back = el('button', { class: 'btn-secondary', type: 'button' });
+if (viewingInvoice.role === 'owner') {
+    app.appendChild(el('hr', { class: 'divider' }));
+    const subLabel = el('p', { class: 'section-label' });
+    subLabel.textContent = 'Submitted by customers';
+    app.appendChild(subLabel);
+    const holder = el('div');
+    const loading = el('div', { class: 'info-banner' });
+    loading.textContent = 'Loading submissions…';
+    holder.appendChild(loading);
+    app.appendChild(holder);
+    loadInvoiceSubmissions(viewingInvoice.id, holder);
+  }
+
+  
   back.textContent = '← My invoices';
   back.onclick = () => { history.pushState({}, '', '/'); view = 'dashboard'; render(); refreshInvoices(); };
   app.appendChild(back);
@@ -2326,6 +2354,74 @@ async function downloadPdf(payload) {
   }
 }
 
+async function loadInvoiceSubmissions(envoiceId, holder) {
+  if (submissionsCache[envoiceId]) { renderSubmissionCards(holder, submissionsCache[envoiceId]); return; }
+  try {
+    const r = await fetch('/api/submissions?envoiceId=' + encodeURIComponent(envoiceId), { credentials: 'same-origin' });
+    if (!r.ok) {
+      holder.innerHTML = '';
+      const b = el('div', { class: 'info-banner' });
+      b.textContent = 'Could not load the submissions.';
+      holder.appendChild(b);
+      return;
+    }
+    const d = await r.json();
+    submissionsCache[envoiceId] = d.submissions || [];
+    renderSubmissionCards(holder, submissionsCache[envoiceId]);
+  } catch (e) {
+    holder.innerHTML = '';
+    const b = el('div', { class: 'info-banner' });
+    b.textContent = 'No connection.';
+    holder.appendChild(b);
+  }
+}
+
+function renderSubmissionCards(holder, rows) {
+  holder.innerHTML = '';
+  if (!rows.length) {
+    const b = el('div', { class: 'info-banner' });
+    b.textContent = 'Nothing submitted yet. Share the invoice link and this fills in as customers respond.';
+    holder.appendChild(b);
+    return;
+  }
+  const card = el('div', { class: 'card' });
+  rows.forEach(sub => {
+    const row = el('div', { class: 'inbox-item', type: 'button' });
+    const main = el('div', { class: 'inbox-main' });
+    const name = el('div', { class: 'inbox-name' });
+    name.textContent = sub.customerName || (sub.envoice && sub.envoice.to) || 'Submission';
+    const meta = el('div', { class: 'inbox-meta' });
+    const d = new Date(sub.submittedAt);
+    meta.textContent = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${sub.customerEmail ? ' · ' + sub.customerEmail : ''}`;
+    main.appendChild(name);
+    main.appendChild(meta);
+    row.appendChild(main);
+    const amt = el('div', { class: 'inbox-amount' });
+    amt.textContent = `${(sub.envoice && sub.envoice.currency) || 'KES'} ${fmt(sub.total)}`;
+    row.appendChild(amt);
+    const pdf = el('button', { class: 'btn-icon', type: 'button', title: 'Download PDF' });
+    pdf.textContent = '↓';
+    pdf.onclick = async (e) => {
+      e.stopPropagation();
+      if (!sub.envoice) { showToast('Could not load that submission.'); return; }
+      showToast('Building PDF…');
+      await downloadPdf(sub.envoice);
+    };
+    row.appendChild(pdf);
+    const chev = el('div', { class: 'inbox-chev' }); chev.textContent = '›';
+    row.appendChild(chev);
+    row.onclick = () => {
+      viewingSubmission = { envoice: sub.envoice, submittedAt: sub.submittedAt };
+      submissionReturnTo = 'invoice';
+      view = 'submission';
+      render();
+    };
+    card.appendChild(row);
+  });
+  holder.appendChild(card);
+}
+
+
 window.addEventListener('popstate', () => {
   if (view !== 'dashboard' && view !== 'creator' && view !== 'invoice') return;
   view = location.pathname === '/new' ? 'creator' : 'dashboard';
@@ -2353,7 +2449,7 @@ function toInboxItem(s) {
     currency: (s.summary && s.summary.currency) || 'KES',
     total: s.total,
     customerEmail: s.customerEmail || '',
-    envoice: null
+    envoice: s.envoice || null
   };
 }
 

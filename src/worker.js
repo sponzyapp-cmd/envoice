@@ -245,6 +245,7 @@ async function apiCreateSubmission(request, env, ctx) {
     ok: true,
     id: row.id,
     signedUp,
+    total: row.total,
     url: `${new URL(request.url).origin}/s/${row.id}`,
     submittedAt: row.submitted_at * 1000,
   }, 201, headers);
@@ -339,7 +340,7 @@ async function servePublished(request, env, ctx, url) {
     'window.__ENVOICE_SUBMITTED__ = false;',
     `window.__ENVOICE_ID__ = ${jsonForScript(row.id)};`,
   ].join('\n');
-  return htmlResponse(await loadTemplate(request, env), body);
+  return htmlResponse(inject(await loadTemplate(request, env), body));
 }
 
 async function serveSubmission(request, env, ctx, url) {
@@ -363,7 +364,7 @@ async function serveSubmission(request, env, ctx, url) {
       `window.__ENVOICE_ID__ = ${jsonForScript(row.envoice_id)};`,
     ].join('\n');
 
-  return htmlResponse(await loadTemplate(request, env), body);
+  return htmlResponse(inject(await loadTemplate(request, env), body));
 }
 
 async function notFoundPage(request, env) {

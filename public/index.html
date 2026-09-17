@@ -1,0 +1,2206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Envoice</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --radius-sm: 0.5rem;
+    --radius: 0.75rem;
+    --radius-lg: 1.25rem;
+
+    --bg: #f9f9f8;
+    --surface: #ffffff;
+    --surface-2: #f4f4f3;
+    --border: #e5e5e3;
+    --border-strong: #d0d0cc;
+
+    --text: #1a1a18;
+    --text-2: #6b6b67;
+    --text-3: #a0a09c;
+    --accent: #1a1a18;
+    --accent-subtle: #f0f0ee;
+    --red: #d0382c;
+    --green: #1c7c3a;
+    --green-bg: #f0fdf4;
+    --green-border: #bbf7d0;
+    --check: #1a1a18;
+  }
+
+  html { font-size: 16px; }
+
+  body {
+    font-family: var(--font);
+    font-size: 1rem;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+  }
+
+  /* Header */
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+    margin-bottom: 2.5rem;
+  }
+  .brand-e {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    color: var(--text);
+  }
+  .brand-tag {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--text-3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .history-tools {
+    margin-left: auto;
+    display: flex;
+    gap: 0.375rem;
+    align-self: center;
+  }
+  .btn-history {
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 0.5rem;
+    cursor: pointer;
+    color: var(--text-2);
+    font-size: 0.9375rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s, color 0.1s, opacity 0.1s;
+    padding: 0;
+    font-family: var(--font);
+  }
+  .btn-history:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+  .btn-history:disabled { opacity: 0.3; cursor: default; }
+
+  .section-label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--text-3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+  }
+
+  /* Tier header */
+  .tier-header {
+    display: flex;
+    align-items: center;
+    padding: 1.125rem 1.25rem;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .tier-number {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    background: var(--accent-subtle);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-2);
+    flex-shrink: 0;
+  }
+  .tier-name-input, .tier-desc-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: var(--font);
+    color: var(--text);
+    flex: 1;
+  }
+  .tier-name-input {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .tier-desc-input {
+    font-size: 0.8125rem;
+    color: var(--text-2);
+    margin-top: 0.125rem;
+    font-weight: 400;
+  }
+  .tier-name-input::placeholder, .tier-desc-input::placeholder { color: var(--text-3); }
+  .tier-actions { display: flex; gap: 0.5rem; }
+  .btn-icon {
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-3);
+    font-size: 1.125rem;
+    transition: background 0.1s, color 0.1s;
+    padding: 0;
+  }
+  .btn-icon:hover { background: var(--surface-2); color: var(--text); }
+
+  /* Line items */
+  .items-list { padding: 0.5rem 0; }
+  .item-block + .item-block { border-top: 1px solid var(--border); }
+  .item-row {
+    display: flex;
+    align-items: center;
+    padding: 0.625rem 1.25rem;
+    gap: 0.75rem;
+  }
+  .item-block.expanded .item-row { padding-bottom: 0.25rem; }
+
+  /* Checkbox */
+  .check-box {
+    width: 1.125rem;
+    height: 1.125rem;
+    border-radius: 0.3125rem;
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface);
+    flex-shrink: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s, border-color 0.1s, opacity 0.1s;
+    position: relative;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .check-box.checked { background: var(--check); border-color: var(--check); }
+  .check-box.checked::after {
+    content: '';
+    width: 0.375rem;
+    height: 0.25rem;
+    border-left: 1.5px solid white;
+    border-bottom: 1.5px solid white;
+    transform: rotate(-45deg) translateY(-0.0625rem);
+    display: block;
+  }
+  .check-box.disabled {
+    background: var(--surface-2) !important;
+    border-color: var(--border) !important;
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+  .check-box.disabled::after { display: none !important; }
+
+  .item-name-input, .item-price-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: var(--font);
+    color: var(--text);
+    font-size: 0.875rem;
+  }
+  .item-name-input { flex: 1; min-width: 0; }
+  .item-name-input::placeholder { color: var(--text-3); }
+  .item-price-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+  }
+  .currency { font-size: 0.75rem; color: var(--text-3); font-weight: 500; }
+  .item-price-input {
+    width: 5rem;
+    text-align: right;
+    font-weight: 500;
+    color: var(--text);
+    font-size: 0.875rem;
+  }
+  .item-price-input::placeholder { color: var(--text-3); text-align: right; }
+  .item-remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-3);
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.125rem;
+    border-radius: 0.25rem;
+    transition: color 0.1s;
+    display: none;
+    flex-shrink: 0;
+  }
+  .item-block:hover .item-remove { display: flex; align-items: center; }
+  .item-block:hover .item-remove:hover { color: var(--red); }
+
+  .item-expand {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-3);
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 0.25rem;
+    transition: background 0.1s, color 0.1s;
+    flex-shrink: 0;
+  }
+  .item-expand:hover { background: var(--surface-2); color: var(--text); }
+  .item-expand .chev {
+    display: inline-block;
+    transition: transform 0.15s;
+    line-height: 1;
+    transform: translateY(-1px);
+  }
+  .item-block.expanded .item-expand .chev { transform: rotate(90deg) translateX(-1px); }
+
+  .item-desc-row { padding: 0 1.25rem 0.875rem 3.125rem; }
+  .item-desc-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: var(--font);
+    font-size: 0.8125rem;
+    color: var(--text-2);
+    resize: none;
+    line-height: 1.45;
+    padding: 0;
+    min-height: 1.2em;
+    overflow: hidden;
+  }
+  .item-desc-input::placeholder { color: var(--text-3); }
+
+  .item-name-display { flex: 1; min-width: 0; font-size: 0.875rem; color: var(--text); }
+  .item-price-display { font-size: 0.875rem; font-weight: 500; color: var(--text); }
+
+  .item-desc-display-row { padding: 0 1.25rem 0.875rem 3.125rem; }
+  .item-desc-display { font-size: 0.75rem; color: var(--text-3); line-height: 1.45; }
+
+  .item-row.disabled .item-name-display { color: var(--text-3); }
+  .item-row.disabled .item-price-display { color: var(--text-3); }
+  .item-row.disabled .currency { opacity: 0.6; }
+  .item-row.disabled .item-expand { color: var(--text-2); }
+
+  .item-row.unchecked .item-name-display,
+  .item-row.unchecked .item-price-display {
+    color: var(--text-3);
+    text-decoration: line-through;
+  }
+
+  .tier-footer { border-top: 1px solid var(--border); padding: 0.75rem 1.25rem; }
+  .btn-add-item {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 0.8125rem;
+    color: var(--text-2);
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: color 0.1s;
+  }
+  .btn-add-item:hover { color: var(--text); }
+  .btn-add-item .plus { font-size: 1rem; font-weight: 300; color: var(--text-3); }
+
+  .tier-subtotal {
+    border-top: 1px solid var(--border);
+    padding: 0.875rem 1.25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .subtotal-label { font-size: 0.8125rem; color: var(--text-2); }
+  .subtotal-value { font-size: 0.9375rem; font-weight: 600; color: var(--text); letter-spacing: -0.02em; }
+  .subtotal-value.muted { color: var(--text-3); font-weight: 500; }
+
+  .btn-add-tier {
+    width: 100%;
+    padding: 0.875rem 1.25rem;
+    background: var(--surface);
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 0.875rem;
+    color: var(--text-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    margin-bottom: 2rem;
+  }
+  .btn-add-tier:hover {
+    border-color: var(--accent);
+    color: var(--text);
+    background: var(--accent-subtle);
+  }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem 1.25rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: var(--surface);
+    margin-bottom: 1.5rem;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-subtle);
+  }
+  .drop-zone.drag-over { transform: scale(1.01); }
+  .drop-icon { font-size: 1.25rem; font-weight: 300; color: var(--text-3); margin-bottom: 0.375rem; }
+  .drop-title { font-size: 0.875rem; font-weight: 600; color: var(--text); letter-spacing: -0.01em; margin-bottom: 0.125rem; }
+  .drop-sub { font-size: 0.75rem; color: var(--text-3); }
+
+  /* Total card */
+  .total-card {
+    background: var(--text);
+    border-radius: var(--radius-lg);
+    padding: 1.375rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+  }
+  .total-label { font-size: 0.8125rem; font-weight: 500; color: rgba(255,255,255,0.5); }
+  .total-amount { font-size: 1.75rem; font-weight: 600; color: #fff; letter-spacing: -0.04em; }
+  .total-currency { font-size: 0.9375rem; font-weight: 400; color: rgba(255,255,255,0.5); margin-right: 0.2rem; }
+
+  /* Buttons */
+  .btn-primary {
+    width: 100%;
+    padding: 1rem;
+    background: var(--text);
+    color: white;
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    margin-bottom: 0.75rem;
+    letter-spacing: -0.01em;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-primary:active { opacity: 0.7; }
+  .btn-primary:disabled { opacity: 0.5; cursor: default; }
+  .btn-secondary {
+    width: 100%;
+    padding: 0.875rem;
+    background: transparent;
+    color: var(--text-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-size: 0.875rem;
+    font-weight: 400;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+    letter-spacing: -0.01em;
+  }
+  .btn-secondary:hover { background: var(--surface-2); color: var(--text); }
+
+  .btn-text {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--text-3);
+    font-family: var(--font);
+    font-size: 0.75rem;
+    padding: 0.875rem 0.5rem 0;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--border-strong);
+  }
+  .btn-text:hover { color: var(--text-2); }
+
+  /* Info row */
+  .info-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.125rem 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .info-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.375rem 0;
+  }
+  .info-row + .info-row { border-top: 1px solid var(--border); }
+  .info-label { font-size: 0.8125rem; color: var(--text-2); width: 5rem; flex-shrink: 0; }
+  .info-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: var(--font);
+    font-size: 0.875rem;
+    color: var(--text);
+  }
+  .info-input::placeholder { color: var(--text-3); }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(4rem);
+    background: var(--text);
+    color: white;
+    padding: 0.75rem 1.25rem;
+    border-radius: var(--radius);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    white-space: nowrap;
+    z-index: 100;
+    pointer-events: none;
+    max-width: 90vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Banners */
+  .submitted-banner {
+    background: var(--green-bg);
+    border: 1px solid var(--green-border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem 1.25rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+  }
+  .submitted-banner .tick { font-size: 1.75rem; margin-bottom: 0.5rem; color: var(--green); }
+  .submitted-banner p { font-size: 0.875rem; color: var(--green); font-weight: 500; line-height: 1.5; }
+  .submitted-banner p + p { margin-top: 0.375rem; font-weight: 400; opacity: 0.85; }
+
+  .info-banner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--text);
+    border-radius: var(--radius);
+    padding: 0.875rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.8125rem;
+    color: var(--text-2);
+    line-height: 1.5;
+  }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 1.75rem 0; }
+
+  /* Option warning */
+  .option-warning {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: var(--red);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    line-height: 1.4;
+  }
+
+  .tier-toggle { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .tier-pill {
+    padding: 0.4375rem 0.875rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    background: var(--surface);
+    color: var(--text-2);
+    cursor: pointer;
+    transition: all 0.15s;
+    -webkit-user-select: none;
+    user-select: none;
+    font-family: var(--font);
+  }
+  .tier-pill.active { background: var(--text); border-color: var(--text); color: white; }
+
+  .mode-badge {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: var(--accent-subtle);
+    color: var(--text-3);
+    border: 1px solid var(--border);
+    padding: 0.25rem 0.625rem;
+    border-radius: 999px;
+    margin-left: auto;
+    align-self: center;
+  }
+
+  /* Share panel */
+  .share-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1rem 0.875rem;
+    margin-bottom: 1.25rem;
+  }
+  .share-panel-title {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 0.625rem;
+  }
+  .share-link-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+    margin-bottom: 0.625rem;
+  }
+  .share-link-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.6875rem;
+    color: var(--text-2);
+    outline: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .btn-copy {
+    padding: 0.5rem 0.875rem;
+    background: var(--text);
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    font-family: var(--font);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+  }
+  .btn-copy:hover { opacity: 0.85; }
+  .btn-copy:active { opacity: 0.7; }
+
+  .share-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .share-action {
+    flex: 1;
+    min-width: 0;
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: 0.5rem;
+    font-family: var(--font);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-2);
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    transition: background 0.1s, color 0.1s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    white-space: nowrap;
+  }
+  .share-action:hover { background: var(--surface-2); color: var(--text); }
+
+  .share-hint {
+    font-size: 0.75rem;
+    color: var(--text-3);
+    margin-top: 0.625rem;
+    line-height: 1.5;
+  }
+
+  /* Inbox */
+  .inbox-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1.25rem;
+    border-top: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .inbox-item:first-of-type { border-top: none; }
+  .inbox-item:hover { background: var(--surface-2); }
+  .inbox-main { flex: 1; min-width: 0; }
+  .inbox-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .inbox-meta {
+    font-size: 0.75rem;
+    color: var(--text-3);
+    margin-top: 0.125rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .inbox-amount {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text);
+    flex-shrink: 0;
+  }
+  .inbox-chev {
+    color: var(--text-3);
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+
+  /* Save indicator */
+  .save-pill {
+    font-size: 0.6875rem;
+    color: var(--text-3);
+    letter-spacing: 0.04em;
+    text-align: center;
+    margin-top: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.4s;
+    height: 1em;
+  }
+  .save-pill.visible { opacity: 1; }
+
+  /* Submission detail header */
+  .submission-header {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .submission-header .who {
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .submission-header .when {
+    font-size: 0.75rem;
+    color: var(--text-3);
+    margin-top: 0.125rem;
+  }
+  .submission-header .what {
+    font-size: 0.8125rem;
+    color: var(--text-2);
+    margin-top: 0.5rem;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="shell" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(async () => {
+
+const DRAFT_KEY = 'envoice:draft:v1';
+const INBOX_KEY = 'envoice:inbox:v1';
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let view = 'creator'; // 'creator' | 'client' | 'submitted' | 'submission'
+let envoice = null;
+let baked = false;                // true when showing a published/shared doc
+let viewingSubmission = null;     // payload when view === 'submission'
+let publishUrl = null;            // last published link (owner)
+let submitUrl = null;             // last submission link (previewer)
+let envoiceId = window.__ENVOICE_ID__ || null;  // server id of the published envoice
+let owner = null;                 // signed-in user ({ email, kind }) or null
+let inboxCache = [];              // submissions served from D1
+let inboxFromServer = false;      // true once the API answered
+
+
+function blankEnvoice() {
+  return { title: '', from: '', to: '', note: '', currency: 'KES', tiers: [] };
+}
+function blankTier(n) {
+  return { id: uid(), name: `Package ${n}`, desc: '', items: [blankItem()], selected: false };
+}
+function blankItem() {
+  return { id: uid(), name: '', desc: '', price: 0, checked: true, expanded: false, expandedClient: false };
+}
+function uid() { return Math.random().toString(36).slice(2, 8); }
+
+function normalizeEnvoice(e) {
+  if (!e || typeof e !== 'object' || !Array.isArray(e.tiers)) return null;
+  if (typeof e.currency !== 'string' || !e.currency) e.currency = 'KES';
+  ['title', 'from', 'to', 'note'].forEach(k => { if (typeof e[k] !== 'string') e[k] = ''; });
+  e.tiers.forEach(t => {
+    if (typeof t.id !== 'string') t.id = uid();
+    if (typeof t.name !== 'string') t.name = '';
+    if (typeof t.desc !== 'string') t.desc = '';
+    if (t.selected === undefined) t.selected = false;
+    if (!Array.isArray(t.items)) t.items = [];
+    t.items.forEach(i => {
+      if (typeof i.id !== 'string') i.id = uid();
+      if (typeof i.name !== 'string') i.name = '';
+      if (typeof i.desc !== 'string') i.desc = '';
+      if (typeof i.price !== 'number') i.price = parseFloat(i.price) || 0;
+      if (i.checked === undefined) i.checked = true;
+      if (i.expanded === undefined) i.expanded = false;
+      if (i.expandedClient === undefined) i.expandedClient = false;
+    });
+  });
+  return e;
+}
+
+// ─── Share URL encode/decode ─────────────────────────────────────────────────
+function encodeShare(obj) {
+  const json = JSON.stringify(obj);
+  if (typeof LZString !== 'undefined' && LZString.compressToEncodedURIComponent) {
+    try { return LZString.compressToEncodedURIComponent(json); } catch (e) {}
+  }
+  try {
+    const b64 = btoa(unescape(encodeURIComponent(json)));
+    return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  } catch (e) { return ''; }
+}
+function decodeShare(str) {
+  if (!str) return null;
+  if (typeof LZString !== 'undefined' && LZString.decompressFromEncodedURIComponent) {
+    try {
+      const out = LZString.decompressFromEncodedURIComponent(str);
+      if (out) return JSON.parse(out);
+    } catch (e) {}
+  }
+  try {
+    let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const json = decodeURIComponent(escape(atob(b64)));
+    return JSON.parse(json);
+  } catch (e) { return null; }
+}
+function makeShareUrl(kind, payload) {
+  const base = location.href.split('#')[0];
+  return base + '#' + kind + '=' + encodeShare(payload);
+}
+function readShareUrl() {
+  const hash = location.hash.replace(/^#/, '');
+  if (!hash) return null;
+  try {
+    const params = new URLSearchParams(hash);
+    const s = params.get('s');
+    const d = params.get('d');
+    if (s) {
+      const payload = decodeShare(s);
+      if (payload) return { kind: 'submission', payload };
+    }
+    if (d) {
+      const payload = decodeShare(d);
+      if (payload) return { kind: 'envoice', payload };
+    }
+  } catch (e) {}
+  return null;
+}
+
+// ─── Clipboard ───────────────────────────────────────────────────────────────
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) { return false; }
+}
+
+// ─── Inbox (owner) ───────────────────────────────────────────────────────────
+function readInbox() {
+  try {
+    const raw = localStorage.getItem(INBOX_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return []; }
+}
+function writeInbox(list) {
+  try { localStorage.setItem(INBOX_KEY, JSON.stringify(list)); } catch (e) {}
+}
+function addToInbox(payload) {
+  if (!payload || !payload.envoice) return;
+  const list = readInbox();
+  const id = payload.submittedAt || Date.now();
+  if (list.some(x => x.submittedAt === id)) return;
+  list.unshift({
+    submittedAt: id,
+    from: (payload.envoice.from || ''),
+    to: (payload.envoice.to || ''),
+    title: (payload.envoice.title || ''),
+    currency: (payload.envoice.currency || 'KES'),
+    total: totalOf(payload.envoice),
+    envoice: payload.envoice
+  });
+  if (list.length > 40) list.length = 40;
+  writeInbox(list);
+}
+function totalOf(env) {
+  if (!env || !Array.isArray(env.tiers)) return 0;
+  const multi = env.tiers.length > 1;
+  const activeTiers = multi ? env.tiers.filter(t => t.selected === true) : env.tiers;
+  return activeTiers
+    .flatMap(t => t.items || [])
+    .filter(i => i.checked)
+    .reduce((s, i) => s + (parseFloat(i.price) || 0), 0);
+}
+
+// ─── Artifact (Claude only) ──────────────────────────────────────────────────
+const artifact = (typeof claude !== 'undefined' && claude && typeof claude.use === 'function')
+  ? await claude.use('artifact')
+  : null;
+
+// ─── Startup ─────────────────────────────────────────────────────────────────
+const share = readShareUrl();
+if (share) {
+  if (share.kind === 'submission') {
+    const payload = share.payload;
+    envoice = normalizeEnvoice(payload.envoice) || blankEnvoice();
+    viewingSubmission = payload;
+    view = 'submission';
+    baked = true;
+    addToInbox(payload);
+  } else if (share.kind === 'envoice') {
+    envoice = normalizeEnvoice(share.payload) || blankEnvoice();
+    view = 'client';
+    baked = true;
+  }
+} else if (window.__ENVOICE_SUBMISSION__) {
+  viewingSubmission = window.__ENVOICE_SUBMISSION__;
+  envoice = normalizeEnvoice(viewingSubmission.envoice) || blankEnvoice();
+  view = 'submission';
+  baked = true;
+} else if (window.__ENVOICE_DATA__) {
+  envoice = normalizeEnvoice(window.__ENVOICE_DATA__) || blankEnvoice();
+  view = window.__ENVOICE_SUBMITTED__ ? 'submitted' : 'client';
+  baked = true;
+} else {
+  let restored = null;
+  try {
+    const saved = localStorage.getItem(DRAFT_KEY);
+    if (saved) restored = normalizeEnvoice(JSON.parse(saved));
+  } catch (e) { restored = null; }
+
+  if (restored && restored.tiers.length) {
+    envoice = restored;
+  } else {
+    envoice = blankEnvoice();
+    envoice.tiers.push(blankTier(1));
+  }
+  view = 'creator';
+}
+
+if (!envoice.tiers.length) envoice.tiers.push(blankTier(1));
+
+// ─── History ─────────────────────────────────────────────────────────────────
+let past = [];
+let future = [];
+let lastState = JSON.stringify(envoice);
+let recordTimer = null;
+
+function recordNow() {
+  clearTimeout(recordTimer);
+  recordTimer = null;
+  const cur = JSON.stringify(envoice);
+  if (cur === lastState) return;
+  past.push(lastState);
+  if (past.length > 100) past.shift();
+  lastState = cur;
+  future = [];
+  updateHistoryButtons();
+}
+function scheduleRecord() {
+  clearTimeout(recordTimer);
+  recordTimer = setTimeout(recordNow, 500);
+}
+function undo() {
+  if (!past.length) return;
+  future.push(lastState);
+  const prev = past.pop();
+  lastState = prev;
+  const parsed = normalizeEnvoice(JSON.parse(prev));
+  if (parsed) envoice = parsed;
+  render();
+}
+function redo() {
+  if (!future.length) return;
+  past.push(lastState);
+  const next = future.pop();
+  lastState = next;
+  const parsed = normalizeEnvoice(JSON.parse(next));
+  if (parsed) envoice = parsed;
+  render();
+}
+function updateHistoryButtons() {
+  const u = document.getElementById('undoBtn');
+  const r = document.getElementById('redoBtn');
+  if (u) u.disabled = past.length === 0;
+  if (r) r.disabled = future.length === 0;
+}
+
+// ─── Auto-save ───────────────────────────────────────────────────────────────
+if (!baked) {
+  setInterval(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(envoice));
+      flashSaved();
+    } catch (e) {}
+  }, 5000);
+}
+function flashSaved() {
+  const p = document.getElementById('savePill');
+  if (!p) return;
+  const t = new Date();
+  const hh = String(t.getHours()).padStart(2, '0');
+  const mm = String(t.getMinutes()).padStart(2, '0');
+  const ss = String(t.getSeconds()).padStart(2, '0');
+  p.textContent = `Draft saved · ${hh}:${mm}:${ss}`;
+  p.classList.add('visible');
+  clearTimeout(flashSaved._t);
+  flashSaved._t = setTimeout(() => p.classList.remove('visible'), 2200);
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────────
+const app = document.getElementById('app');
+
+function render() {
+  if (view === 'submission') renderSubmissionView();
+  else if (view === 'creator') renderCreator();
+  else if (view === 'client') renderClient();
+  else if (view === 'submitted') renderSubmitted();
+  updateHistoryButtons();
+  autoResizeAll();
+}
+
+// ── Creator view ─────────────────────────────────────────────────────────────
+function renderCreator() {
+  app.innerHTML = '';
+
+  const hdr = el('div', { class: 'brand' });
+  hdr.innerHTML = `<span class="brand-e">Envoice</span><span class="brand-tag">by ${escapeHtml(envoice.from || 'you')}</span>`;
+  const tools = el('div', { class: 'history-tools' });
+  const undoBtn = el('button', { class: 'btn-history', id: 'undoBtn', title: 'Undo', type: 'button' });
+  undoBtn.textContent = '↶';
+  undoBtn.onclick = undo;
+  const redoBtn = el('button', { class: 'btn-history', id: 'redoBtn', title: 'Redo', type: 'button' });
+  redoBtn.textContent = '↷';
+  redoBtn.onclick = redo;
+  tools.appendChild(undoBtn);
+  tools.appendChild(redoBtn);
+  hdr.appendChild(tools);
+  app.appendChild(hdr);
+
+  // Info
+  const infoLabel = el('p', { class: 'section-label' }); infoLabel.textContent = 'Envoice details';
+  app.appendChild(infoLabel);
+  const infoCard = el('div', { class: 'info-section card' });
+  infoCard.appendChild(infoRow('From', 'from', 'Your name or brand', envoice.from));
+  infoCard.appendChild(infoRow('To', 'to', 'Client name', envoice.to));
+  infoCard.appendChild(infoRow('Title', 'title', 'e.g. Creator package', envoice.title));
+  infoCard.appendChild(infoRow('Note', 'note', 'Optional message', envoice.note));
+  app.appendChild(infoCard);
+
+  app.appendChild(el('hr', { class: 'divider' }));
+
+  // Excel drop zone
+  app.appendChild(renderDropZone());
+
+  // Tiers
+  const tiersLabel = el('p', { class: 'section-label' }); tiersLabel.textContent = 'Packages & items';
+  app.appendChild(tiersLabel);
+
+  envoice.tiers.forEach((tier, ti) => app.appendChild(renderTierCreator(tier, ti)));
+
+  const addTier = el('button', { class: 'btn-add-tier', type: 'button' });
+  addTier.innerHTML = `<span style="font-size:1.25rem;font-weight:300;">+</span> Add package`;
+  addTier.onclick = () => {
+    envoice.tiers.push(blankTier(envoice.tiers.length + 1));
+    recordNow();
+    render();
+  };
+  app.appendChild(addTier);
+
+  // Total preview
+  const totalAmt = envoice.tiers.flatMap(t => t.items).filter(i => i.checked).reduce((s, i) => s + (parseFloat(i.price) || 0), 0);
+  const totalCard = el('div', { class: 'total-card' });
+  totalCard.innerHTML = `<span class="total-label">Total preview</span><span class="total-amount"><span class="total-currency">${escapeHtml(envoice.currency)}</span>${fmt(totalAmt)}</span>`;
+  app.appendChild(totalCard);
+
+  // ── Owner account — where this envoice gets saved ──
+  const ownerLabel = el('p', { class: 'section-label' });
+  ownerLabel.textContent = 'Save & publish';
+  app.appendChild(ownerLabel);
+  app.appendChild(renderOwnerCard());
+
+
+  // ── Publish ──
+  const pub = el('button', { class: 'btn-primary', type: 'button' });
+  pub.textContent = publishUrl ? 'Republish & copy new link' : 'Publish & copy link';
+  pub.onclick = publishEnvoice;
+  app.appendChild(pub);
+
+  // Show last published link (auto-copied + visible)
+  if (publishUrl) {
+    app.appendChild(renderSharePanel({
+      title: 'Your published link — send this to your client',
+      url: publishUrl,
+      hint: 'Anyone with this link can view the packages, tick what they want, and submit a selection back to you.',
+      whatsappMessage: `Hi${envoice.to ? ' ' + envoice.to : ''}, here's your Envoice from ${envoice.from || 'me'}: `,
+      emailSubject: `${envoice.title || 'Envoice'} from ${envoice.from || 'me'}`,
+      emailBody: `Hi${envoice.to ? ' ' + envoice.to : ''},\n\nHere's the Envoice link — pick what you'd like and submit:\n\n`
+    }));
+  }
+
+  const previewBtn = el('button', { class: 'btn-secondary', type: 'button' });
+  previewBtn.textContent = 'Preview client view';
+  previewBtn.onclick = () => { view = 'client'; render(); };
+  app.appendChild(previewBtn);
+
+  // ── Submissions inbox ──
+  app.appendChild(el('hr', { class: 'divider' }));
+  const inboxLabel = el('p', { class: 'section-label' }); inboxLabel.textContent = 'Submissions received';
+  app.appendChild(inboxLabel);
+
+  const inbox = inboxFromServer ? inboxCache : readInbox();
+  if (!inbox.length) {
+    const empty = el('div', { class: 'info-banner' });
+    empty.textContent = 'No submissions yet. When your client submits, they\u2019ll send you a link — open it or paste it below to see the selection here.';
+    app.appendChild(empty);
+  } else {
+    const card = el('div', { class: 'card' });
+    inbox.forEach(item => {
+      const row = el('div', { class: 'inbox-item', type: 'button' });
+      const main = el('div', { class: 'inbox-main' });
+      const name = el('div', { class: 'inbox-name' });
+      name.textContent = item.to ? `${item.to}` : (item.title || 'Untitled submission');
+      const meta = el('div', { class: 'inbox-meta' });
+      const d = new Date(item.submittedAt);
+      meta.textContent = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}${item.from ? ' · from ' + item.from : ''}`;
+      main.appendChild(name);
+      main.appendChild(meta);
+      row.appendChild(main);
+      const amt = el('div', { class: 'inbox-amount' });
+      amt.textContent = `${item.currency || 'KES'} ${fmt(item.total)}`;
+      row.appendChild(amt);
+      const chev = el('div', { class: 'inbox-chev' }); chev.textContent = '›';
+      row.appendChild(chev);
+      row.onclick = async () => {
+        if (item.id) {
+          try {
+            const r = await fetch('/api/submissions/' + encodeURIComponent(item.id), { credentials: 'same-origin' });
+            if (r.ok) {
+              const d = await r.json();
+              viewingSubmission = { envoice: d.submission.envoice, submittedAt: d.submission.submittedAt };
+              view = 'submission';
+              render();
+              return;
+            }
+          } catch (e) {}
+        }
+        viewingSubmission = { envoice: item.envoice, submittedAt: item.submittedAt };
+        view = 'submission';
+        render();
+      };
+      card.appendChild(row);
+    });
+    app.appendChild(card);
+
+    const clearBtn = el('button', { class: 'btn-text', type: 'button' });
+    clearBtn.textContent = 'Clear received submissions';
+    clearBtn.onclick = async () => {
+      if (!confirm('Clear all received submissions?')) return;
+      try { await fetch('/api/submissions', { method: 'DELETE', credentials: 'same-origin' }); } catch (e) {}
+      writeInbox([]);
+      inboxCache = [];
+      render();
+    };
+    app.appendChild(clearBtn);
+  }
+
+  // Paste-a-submission-link box
+  const pasteLabel = el('p', { class: 'section-label', style: 'margin-top:1.5rem;' });
+  pasteLabel.textContent = 'Open a submission link';
+  app.appendChild(pasteLabel);
+  const pasteCard = el('div', { class: 'info-section card' });
+  const pasteRow = el('div', { class: 'info-row' });
+  const pasteIn = el('input', { class: 'info-input', type: 'text', placeholder: 'Paste submission link here…' });
+  pasteIn.addEventListener('keydown', e => { if (e.key === 'Enter') tryOpenSubmission(pasteIn.value); });
+  pasteRow.appendChild(pasteIn);
+  pasteCard.appendChild(pasteRow);
+  const openBtn = el('button', { class: 'btn-secondary', type: 'button', style: 'margin-top:0.5rem;' });
+  openBtn.textContent = 'Open submission';
+  openBtn.onclick = () => tryOpenSubmission(pasteIn.value);
+  pasteCard.appendChild(openBtn);
+  app.appendChild(pasteCard);
+
+  // Save indicator + clear draft
+  const savePill = el('div', { class: 'save-pill', id: 'savePill' });
+  app.appendChild(savePill);
+
+  const clearDraft = el('button', { class: 'btn-text', type: 'button' });
+  clearDraft.textContent = 'Clear saved draft & start fresh';
+  clearDraft.onclick = () => {
+    if (!confirm('Clear saved draft and start fresh?')) return;
+    try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+    envoice = blankEnvoice();
+    envoice.tiers.push(blankTier(1));
+    past = []; future = [];
+    lastState = JSON.stringify(envoice);
+    publishUrl = null;
+    render();
+  };
+  app.appendChild(clearDraft);
+}
+
+async function tryOpenSubmission(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return;
+
+  const m = s.match(/\/s\/([A-Za-z0-9_-]{6,80})/);
+  if (m) {
+    try {
+      const r = await fetch('/api/submissions/' + encodeURIComponent(m[1]), { credentials: 'same-origin' });
+      if (!r.ok) { showToast('Sign in as the owner to open that submission.'); return; }
+      const d = await r.json();
+      viewingSubmission = { envoice: d.submission.envoice, submittedAt: d.submission.submittedAt };
+      view = 'submission';
+      render();
+      return;
+    } catch (e) { showToast('Could not read that link.'); return; }
+  }
+
+  let hash = '';
+  const idx = s.indexOf('#');
+  if (idx >= 0) hash = s.slice(idx + 1);
+  else if (s.startsWith('s=') || s.startsWith('d=')) hash = s;
+  if (!hash) { showToast('That doesn\u2019t look like a submission link.'); return; }
+  try {
+    const params = new URLSearchParams(hash);
+    const payloadStr = params.get('s');
+    if (!payloadStr) { showToast('Not a submission link.'); return; }
+    const payload = decodeShare(payloadStr);
+    if (!payload || !payload.envoice) { showToast('Could not read that link.'); return; }
+    addToInbox(payload);
+    viewingSubmission = payload;
+    view = 'submission';
+    render();
+  } catch (e) {
+    showToast('Could not read that link.');
+  }
+}
+
+function renderDropZone() {
+  const zone = el('div', { class: 'drop-zone', id: 'dropZone' });
+  zone.innerHTML = `
+    <div class="drop-icon">↓</div>
+    <div class="drop-title">Import from Excel</div>
+    <div class="drop-sub">Drop .xlsx file or click to browse</div>
+  `;
+
+  const fileInput = el('input', { type: 'file', accept: '.xlsx,.xls', style: 'display:none' });
+  fileInput.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if (f) handleExcelFile(f);
+    fileInput.value = '';
+  });
+  zone.appendChild(fileInput);
+  zone.addEventListener('click', () => fileInput.click());
+
+  ['dragenter', 'dragover'].forEach(evt => {
+    zone.addEventListener(evt, e => {
+      e.preventDefault(); e.stopPropagation();
+      zone.classList.add('drag-over');
+    });
+  });
+  ['dragleave', 'drop'].forEach(evt => {
+    zone.addEventListener(evt, e => {
+      e.preventDefault(); e.stopPropagation();
+      if (evt === 'dragleave' && zone.contains(e.relatedTarget)) return;
+      zone.classList.remove('drag-over');
+    });
+  });
+  zone.addEventListener('drop', e => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleExcelFile(f);
+  });
+
+  return zone;
+}
+
+function renderTierCreator(tier, ti) {
+  const card = el('div', { class: 'card' });
+
+  const header = el('div', { class: 'tier-header' });
+  const num = el('div', { class: 'tier-number' }); num.textContent = ti + 1;
+  header.appendChild(num);
+
+  const meta = el('div', { style: 'flex:1; min-width:0;' });
+  const nameIn = el('input', { class: 'tier-name-input', type: 'text', placeholder: `Package ${ti + 1}`, value: tier.name });
+  nameIn.addEventListener('input', e => { tier.name = e.target.value; updateBrand(); scheduleRecord(); });
+  const descIn = el('input', { class: 'tier-desc-input', type: 'text', placeholder: 'Short description (optional)', value: tier.desc });
+  descIn.addEventListener('input', e => { tier.desc = e.target.value; scheduleRecord(); });
+  meta.appendChild(nameIn);
+  meta.appendChild(descIn);
+  header.appendChild(meta);
+
+  if (envoice.tiers.length > 1) {
+    const del = el('button', { class: 'btn-icon', title: 'Remove package', type: 'button' });
+    del.innerHTML = '×';
+    del.onclick = () => {
+      envoice.tiers.splice(ti, 1);
+      recordNow();
+      render();
+    };
+    header.appendChild(del);
+  }
+  card.appendChild(header);
+
+  const list = el('div', { class: 'items-list' });
+  tier.items.forEach((item, ii) => list.appendChild(renderItemCreator(item, tier, ii)));
+  card.appendChild(list);
+
+  const footer = el('div', { class: 'tier-footer' });
+  const addItem = el('button', { class: 'btn-add-item', type: 'button' });
+  addItem.innerHTML = `<span class="plus">+</span> Add line item`;
+  addItem.onclick = () => {
+    tier.items.push(blankItem());
+    recordNow();
+    render();
+  };
+  footer.appendChild(addItem);
+  card.appendChild(footer);
+
+  return card;
+}
+
+function renderItemCreator(item, tier, ii) {
+  const block = el('div', { class: 'item-block' + (item.expanded ? ' expanded' : '') });
+  const row = el('div', { class: 'item-row' });
+
+  const chk = el('div', { class: 'check-box' + (item.checked ? ' checked' : '') });
+  chk.onclick = () => {
+    item.checked = !item.checked;
+    chk.className = 'check-box' + (item.checked ? ' checked' : '');
+    recordNow();
+  };
+  row.appendChild(chk);
+
+  const nameIn = el('input', { class: 'item-name-input', type: 'text', placeholder: 'Item description', value: item.name });
+  nameIn.addEventListener('input', e => { item.name = e.target.value; scheduleRecord(); });
+  row.appendChild(nameIn);
+
+  const priceWrap = el('div', { class: 'item-price-wrap' });
+  const curr = el('span', { class: 'currency' }); curr.textContent = envoice.currency;
+  priceWrap.appendChild(curr);
+  const priceIn = el('input', { class: 'item-price-input', type: 'number', placeholder: '0', value: item.price || '' });
+  priceIn.addEventListener('input', e => { item.price = parseFloat(e.target.value) || 0; scheduleRecord(); });
+  priceWrap.appendChild(priceIn);
+  row.appendChild(priceWrap);
+
+  const exp = el('button', { class: 'item-expand', title: 'Show description', type: 'button' });
+  exp.innerHTML = '<span class="chev">›</span>';
+  exp.onclick = () => {
+    item.expanded = !item.expanded;
+    block.classList.toggle('expanded', item.expanded);
+    if (item.expanded) {
+      descRow.style.display = 'block';
+      autoResize(descTa);
+      descTa.focus();
+    } else {
+      descRow.style.display = 'none';
+    }
+  };
+  row.appendChild(exp);
+
+  const rm = el('button', { class: 'item-remove', title: 'Remove', type: 'button' });
+  rm.innerHTML = '×';
+  rm.onclick = () => {
+    tier.items.splice(ii, 1);
+    if (!tier.items.length) tier.items.push(blankItem());
+    recordNow();
+    render();
+  };
+  row.appendChild(rm);
+
+  block.appendChild(row);
+
+  const descRow = el('div', { class: 'item-desc-row' });
+  descRow.style.display = item.expanded ? 'block' : 'none';
+  const descTa = el('textarea', {
+    class: 'item-desc-input', rows: '1',
+    placeholder: 'Add a description for this line item…'
+  });
+  descTa.value = item.desc || '';
+  descTa.addEventListener('input', e => {
+    item.desc = e.target.value;
+    autoResize(e.target);
+    scheduleRecord();
+  });
+  descRow.appendChild(descTa);
+  block.appendChild(descRow);
+
+  return block;
+}
+
+function updateBrand() {
+  const badge = document.querySelector('.brand-tag');
+  if (badge) badge.textContent = `by ${envoice.from || 'you'}`;
+}
+
+// ── Share panel ──────────────────────────────────────────────────────────────
+function renderSharePanel({ title, url, hint, whatsappMessage, emailSubject, emailBody }) {
+  const panel = el('div', { class: 'share-panel' });
+
+  const t = el('div', { class: 'share-panel-title' }); t.textContent = title;
+  panel.appendChild(t);
+
+  const row = el('div', { class: 'share-link-row' });
+  const inp = el('input', { class: 'share-link-input', type: 'text', readonly: 'readonly' });
+  inp.value = url;
+  inp.addEventListener('focus', () => inp.select());
+  row.appendChild(inp);
+  const copyBtn = el('button', { class: 'btn-copy', type: 'button' });
+  copyBtn.textContent = 'Copy';
+  copyBtn.onclick = async () => {
+    const ok = await copyToClipboard(url);
+    showToast(ok ? 'Link copied.' : 'Copy failed — select & copy manually.');
+  };
+  row.appendChild(copyBtn);
+  panel.appendChild(row);
+
+  const actions = el('div', { class: 'share-actions' });
+  if (whatsappMessage !== undefined) {
+    const wa = el('a', { class: 'share-action', href: 'https://wa.me/?text=' + encodeURIComponent(whatsappMessage + url), target: '_blank', rel: 'noopener' });
+    wa.textContent = 'WhatsApp';
+    actions.appendChild(wa);
+  }
+  if (emailSubject !== undefined) {
+    const em = el('a', {
+      class: 'share-action',
+      href: 'mailto:?subject=' + encodeURIComponent(emailSubject) + '&body=' + encodeURIComponent(emailBody + url),
+    });
+    em.textContent = 'Email';
+    actions.appendChild(em);
+  }
+  const sm = el('a', { class: 'share-action', href: 'sms:?&body=' + encodeURIComponent((whatsappMessage || '') + url) });
+  sm.textContent = 'SMS';
+  actions.appendChild(sm);
+  panel.appendChild(actions);
+
+  if (hint) {
+    const h = el('div', { class: 'share-hint' }); h.textContent = hint;
+    panel.appendChild(h);
+  }
+
+  return panel;
+}
+
+// ── Client view (previewer) ──────────────────────────────────────────────────
+function renderClient() {
+  app.innerHTML = '';
+  const multi = envoice.tiers.length > 1;
+
+  const hdr = el('div', { class: 'brand' });
+  const badge = envoice.from ? `by ${escapeHtml(envoice.from)}` : 'creator envoice';
+  hdr.innerHTML = `<span class="brand-e">Envoice</span><span class="brand-tag">${badge}</span>`;
+  if (!baked) {
+    const modeBadge = el('span', { class: 'mode-badge' }); modeBadge.textContent = 'Preview';
+    hdr.appendChild(modeBadge);
+  }
+  app.appendChild(hdr);
+
+  if (envoice.title || envoice.to) {
+    const meta = el('div', { style: 'margin-bottom:1.5rem;' });
+    if (envoice.to) {
+      const to = el('p', { style: 'font-size:0.8125rem;color:var(--text-3);' });
+      to.textContent = `For ${envoice.to}`;
+      meta.appendChild(to);
+    }
+    if (envoice.title) {
+      const title = el('p', { style: 'font-size:1.125rem;font-weight:600;letter-spacing:-0.025em;color:var(--text);margin-top:0.25rem;' });
+      title.textContent = envoice.title;
+      meta.appendChild(title);
+    }
+    app.appendChild(meta);
+  }
+
+  if (envoice.note) {
+    const note = el('p', { style: 'font-size:0.875rem;color:var(--text-2);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.875rem 1rem;margin-bottom:1.5rem;line-height:1.5;' });
+    note.textContent = envoice.note;
+    app.appendChild(note);
+  }
+
+  if (multi) {
+    const warn = el('div', { class: 'option-warning' });
+    warn.textContent = '⚠ Choose one option. Only one is acceptable.';
+    app.appendChild(warn);
+
+    const pillWrap = el('div', { class: 'tier-toggle' });
+    envoice.tiers.forEach((tier, ti) => {
+      const pill = el('button', { class: 'tier-pill' + (tier.selected ? ' active' : ''), type: 'button' });
+      pill.textContent = tier.name || `Package ${ti + 1}`;
+      pill.onclick = () => {
+        const wasSelected = tier.selected === true;
+        envoice.tiers.forEach(t => { t.selected = false; });
+        if (!wasSelected) tier.selected = true;
+        renderClient();
+      };
+      pillWrap.appendChild(pill);
+    });
+    app.appendChild(pillWrap);
+  }
+
+  envoice.tiers.forEach((tier, ti) => app.appendChild(renderTierClient(tier, ti, multi)));
+
+  const totalAmt = visibleCheckedTotal();
+  const totalCard = el('div', { class: 'total-card' });
+  totalCard.id = 'total-card';
+  totalCard.innerHTML = `<span class="total-label">Total</span><span class="total-amount" id="total-amt"><span class="total-currency">${escapeHtml(envoice.currency)}</span>${fmt(totalAmt)}</span>`;
+  app.appendChild(totalCard);
+
+  // Optional customer signup — their choice; nothing is stored for them otherwise
+  if (baked) app.appendChild(renderCustomerSignup());
+
+
+  // Submit disabled if multi & nothing selected
+  const nothingChosen = multi && !envoice.tiers.some(t => t.selected === true);
+  const submitBtn = el('button', { class: 'btn-primary', type: 'button' });
+  submitBtn.textContent = nothingChosen ? 'Choose an option to continue' : 'Submit selection';
+  submitBtn.disabled = nothingChosen;
+  submitBtn.onclick = handleSubmit;
+  app.appendChild(submitBtn);
+
+  if (!baked) {
+    const back = el('button', { class: 'btn-secondary', type: 'button' });
+    back.textContent = '← Back to editor';
+    back.onclick = () => { view = 'creator'; render(); };
+    app.appendChild(back);
+  }
+}
+
+function renderTierClient(tier, ti, multi) {
+  const active = !multi || tier.selected === true;
+  const card = el('div', { class: 'card' });
+
+  if (multi) {
+    const header = el('div', { class: 'tier-header' });
+    const num = el('div', { class: 'tier-number' }); num.textContent = ti + 1;
+    header.appendChild(num);
+    const meta = el('div', { style: 'flex:1;' });
+    const name = el('p', { style: 'font-size:0.9375rem;font-weight:600;letter-spacing:-0.02em;' });
+    name.textContent = tier.name || `Package ${ti + 1}`;
+    meta.appendChild(name);
+    if (tier.desc) {
+      const desc = el('p', { style: 'font-size:0.8125rem;color:var(--text-2);margin-top:0.125rem;' });
+      desc.textContent = tier.desc;
+      meta.appendChild(desc);
+    }
+    header.appendChild(meta);
+    card.appendChild(header);
+  }
+
+  const list = el('div', { class: 'items-list' });
+  tier.items.forEach(item => {
+    if (!item.name && !item.price) return;
+    list.appendChild(renderItemClient(item, tier, active));
+  });
+  card.appendChild(list);
+
+  const sub = active
+    ? tier.items.filter(i => i.checked).reduce((s, i) => s + (parseFloat(i.price) || 0), 0)
+    : 0;
+  const subRow = el('div', { class: 'tier-subtotal' });
+  const subLabel = el('span', { class: 'subtotal-label' }); subLabel.textContent = 'Package total';
+  const subVal = el('span', { class: 'subtotal-value' + (active ? '' : ' muted'), 'data-tier-sub': tier.id });
+  subVal.textContent = active ? `${envoice.currency} ${fmt(sub)}` : '—';
+  subRow.appendChild(subLabel);
+  subRow.appendChild(subVal);
+  card.appendChild(subRow);
+
+  return card;
+}
+
+function renderItemClient(item, tier, active) {
+  const block = el('div', { class: 'item-block' + (item.expandedClient ? ' expanded' : '') });
+
+  const rowClasses = ['item-row'];
+  if (active && !item.checked) rowClasses.push('unchecked');
+  if (!active) rowClasses.push('disabled');
+  const row = el('div', { class: rowClasses.join(' ') });
+
+  const chkClasses = ['check-box'];
+  if (active && item.checked) chkClasses.push('checked');
+  if (!active) chkClasses.push('disabled');
+  const chk = el('div', { class: chkClasses.join(' ') });
+  if (active) {
+    chk.onclick = () => {
+      item.checked = !item.checked;
+      chk.className = 'check-box' + (item.checked ? ' checked' : '');
+      row.className = 'item-row' + (item.checked ? '' : ' unchecked');
+      updateTotals(tier);
+    };
+  }
+  row.appendChild(chk);
+
+  const name = el('span', { class: 'item-name-display' });
+  name.textContent = item.name;
+  row.appendChild(name);
+
+  const priceWrap = el('div', { class: 'item-price-wrap' });
+  const curr = el('span', { class: 'currency' }); curr.textContent = envoice.currency;
+  priceWrap.appendChild(curr);
+  const price = el('span', { class: 'item-price-display' }); price.textContent = fmt(item.price);
+  priceWrap.appendChild(price);
+  row.appendChild(priceWrap);
+
+  let descRow = null;
+  if (item.desc) {
+    const exp = el('button', { class: 'item-expand', title: 'Show description', type: 'button' });
+    exp.innerHTML = '<span class="chev">›</span>';
+    exp.onclick = (e) => {
+      e.stopPropagation();
+      item.expandedClient = !item.expandedClient;
+      block.classList.toggle('expanded', item.expandedClient);
+      if (descRow) descRow.style.display = item.expandedClient ? 'block' : 'none';
+    };
+    row.appendChild(exp);
+  }
+
+  block.appendChild(row);
+
+  if (item.desc) {
+    descRow = el('div', { class: 'item-desc-display-row' });
+    descRow.style.display = item.expandedClient ? 'block' : 'none';
+    const d = el('p', { class: 'item-desc-display' });
+    d.textContent = item.desc;
+    descRow.appendChild(d);
+    block.appendChild(descRow);
+  }
+
+  return block;
+}
+
+function updateTotals(tier) {
+  const multi = envoice.tiers.length > 1;
+  const active = !multi || tier.selected === true;
+
+  const sub = active
+    ? tier.items.filter(i => i.checked).reduce((s, i) => s + (parseFloat(i.price) || 0), 0)
+    : 0;
+  const subEl = document.querySelector(`[data-tier-sub="${tier.id}"]`);
+  if (subEl) {
+    subEl.textContent = active ? `${envoice.currency} ${fmt(sub)}` : '—';
+    subEl.classList.toggle('muted', !active);
+  }
+
+  const total = visibleCheckedTotal();
+  const totalEl = document.getElementById('total-amt');
+  if (totalEl) totalEl.innerHTML = `<span class="total-currency">${escapeHtml(envoice.currency)}</span>${fmt(total)}`;
+}
+
+function visibleCheckedTotal() {
+  const multi = envoice.tiers.length > 1;
+  const activeTiers = multi ? envoice.tiers.filter(t => t.selected === true) : envoice.tiers;
+  return activeTiers
+    .flatMap(t => t.items)
+    .filter(i => i.checked)
+    .reduce((s, i) => s + (parseFloat(i.price) || 0), 0);
+}
+
+// ── Submitted view (previewer, after submitting) ─────────────────────────────
+function renderSubmitted() {
+  app.innerHTML = '';
+
+  const hdr = el('div', { class: 'brand' });
+  hdr.innerHTML = `<span class="brand-e">Envoice</span>`;
+  app.appendChild(hdr);
+
+  const ownerName = envoice.from || 'The owner';
+
+  const banner = el('div', { class: 'submitted-banner' });
+  banner.innerHTML = `
+    <div class="tick">✓</div>
+    <p>Selection submitted successfully.</p>
+    <p>${escapeHtml(ownerName)} has been notified.</p>
+  `;
+  app.appendChild(banner);
+
+  // Share panel: send the submission link back
+  const url = submitUrl || makeShareUrl('s', { envoice: JSON.parse(JSON.stringify(envoice)), submittedAt: Date.now() });
+  const message = `Hi ${ownerName}, I've submitted my Envoice selection. Review it here: `;
+  app.appendChild(renderSharePanel({
+    title: `Send your selection back to ${ownerName}`,
+    url,
+    hint: `Tap WhatsApp or Email to send this to ${ownerName}. It opens your app with the link pre-filled — just pick ${ownerName} and hit send.`,
+    whatsappMessage: message,
+    emailSubject: `My Envoice selection`,
+    emailBody: `Hi ${ownerName},\n\nI've submitted my selection. Here's the link:\n\n`
+  }));
+
+  // Summary
+  const sumLabel = el('p', { class: 'section-label' }); sumLabel.textContent = 'Your selection';
+  app.appendChild(sumLabel);
+
+  envoice.tiers.forEach(tier => {
+    const multi = envoice.tiers.length > 1;
+    if (multi && tier.selected !== true) return;
+    const chosen = tier.items.filter(i => i.checked && (i.name || i.price));
+    if (!chosen.length) return;
+    const card = el('div', { class: 'card' });
+    if (tier.name) {
+      const th = el('div', { class: 'tier-header' });
+      const n = el('p', { style: 'font-size:0.875rem;font-weight:600;' });
+      n.textContent = tier.name;
+      th.appendChild(n);
+      card.appendChild(th);
+    }
+    const list = el('div', { class: 'items-list' });
+    chosen.forEach(item => {
+      const row = el('div', { class: 'item-row' });
+      const main = el('div', { style: 'flex:1;min-width:0;display:flex;flex-direction:column;gap:0.125rem;' });
+      const name = el('span', { class: 'item-name-display' }); name.textContent = item.name;
+      main.appendChild(name);
+      if (item.desc) {
+        const d = el('span', { class: 'item-desc-display', style: 'font-size:0.75rem;color:var(--text-3);line-height:1.4;' });
+        d.textContent = item.desc;
+        main.appendChild(d);
+      }
+      row.appendChild(main);
+      const pw = el('div', { class: 'item-price-wrap' });
+      const c = el('span', { class: 'currency' }); c.textContent = envoice.currency;
+      pw.appendChild(c);
+      const p = el('span', { class: 'item-price-display' }); p.textContent = fmt(item.price);
+      pw.appendChild(p);
+      row.appendChild(pw);
+      list.appendChild(row);
+    });
+    card.appendChild(list);
+    app.appendChild(card);
+  });
+
+  const total = totalOf(envoice);
+  const totalCard = el('div', { class: 'total-card' });
+  totalCard.innerHTML = `<span class="total-label">Total</span><span class="total-amount"><span class="total-currency">${escapeHtml(envoice.currency)}</span>${fmt(total)}</span>`;
+  app.appendChild(totalCard);
+
+  // Start over
+  if (!baked) {
+    const back = el('button', { class: 'btn-secondary', type: 'button' });
+    back.textContent = '← Back to editor';
+    back.onclick = () => { view = 'creator'; render(); };
+    app.appendChild(back);
+  }
+}
+
+// ── Submission view (owner viewing a received submission) ────────────────────
+function renderSubmissionView() {
+  app.innerHTML = '';
+  if (!viewingSubmission) { view = 'creator'; render(); return; }
+
+  const payload = viewingSubmission;
+  const subEnvoice = normalizeEnvoice(payload.envoice);
+  const total = totalOf(subEnvoice);
+  const multi = subEnvoice.tiers.length > 1;
+
+  // Brand
+  const hdr = el('div', { class: 'brand' });
+  hdr.innerHTML = `<span class="brand-e">Envoice</span><span class="brand-tag">Submission</span>`;
+  app.appendChild(hdr);
+
+  // Header card
+  const when = new Date(payload.submittedAt || Date.now());
+  const header = el('div', { class: 'submission-header' });
+  const who = el('div', { class: 'who' });
+  who.textContent = subEnvoice.to ? `${subEnvoice.to}'s selection` : 'Received selection';
+  const w = el('div', { class: 'when' });
+  w.textContent = `${when.toLocaleDateString()} ${when.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}${subEnvoice.from ? ' · sent to ' + subEnvoice.from : ''}`;
+  header.appendChild(who);
+  header.appendChild(w);
+  if (subEnvoice.title) {
+    const what = el('div', { class: 'what' });
+    what.textContent = subEnvoice.title;
+    header.appendChild(what);
+  }
+  app.appendChild(header);
+
+  // Selections
+  subEnvoice.tiers.forEach(tier => {
+    if (multi && tier.selected !== true) return;
+    const chosen = tier.items.filter(i => i.checked && (i.name || i.price));
+    if (!chosen.length) return;
+    const card = el('div', { class: 'card' });
+    if (tier.name) {
+      const th = el('div', { class: 'tier-header' });
+      const n = el('p', { style: 'font-size:0.875rem;font-weight:600;' });
+      n.textContent = tier.name;
+      th.appendChild(n);
+      card.appendChild(th);
+    }
+    const list = el('div', { class: 'items-list' });
+    chosen.forEach(item => {
+      const row = el('div', { class: 'item-row' });
+      const main = el('div', { style: 'flex:1;min-width:0;display:flex;flex-direction:column;gap:0.125rem;' });
+      const name = el('span', { class: 'item-name-display' }); name.textContent = item.name;
+      main.appendChild(name);
+      if (item.desc) {
+        const d = el('span', { class: 'item-desc-display', style: 'font-size:0.75rem;color:var(--text-3);line-height:1.4;' });
+        d.textContent = item.desc;
+        main.appendChild(d);
+      }
+      row.appendChild(main);
+      const pw = el('div', { class: 'item-price-wrap' });
+      const c = el('span', { class: 'currency' }); c.textContent = subEnvoice.currency;
+      pw.appendChild(c);
+      const p = el('span', { class: 'item-price-display' }); p.textContent = fmt(item.price);
+      pw.appendChild(p);
+      row.appendChild(pw);
+      list.appendChild(row);
+    });
+    card.appendChild(list);
+    app.appendChild(card);
+  });
+
+  const totalCard = el('div', { class: 'total-card' });
+  totalCard.innerHTML = `<span class="total-label">Submitted total</span><span class="total-amount"><span class="total-currency">${escapeHtml(subEnvoice.currency)}</span>${fmt(total)}</span>`;
+  app.appendChild(totalCard);
+
+  // Owner actions
+  const copyBtn = el('button', { class: 'btn-primary', type: 'button' });
+  copyBtn.textContent = 'Copy summary as text';
+  copyBtn.onclick = async () => {
+    const ok = await copyToClipboard(buildSubmissionSummary(subEnvoice, payload));
+    showToast(ok ? 'Summary copied.' : 'Copy failed.');
+  };
+  app.appendChild(copyBtn);
+
+  const back = el('button', { class: 'btn-secondary', type: 'button' });
+  back.textContent = '← Back to editor';
+  back.onclick = () => { if (baked) { location.href = '/'; return; } viewingSubmission = null; view = 'creator'; render(); };
+  app.appendChild(back);
+}
+
+function buildSubmissionSummary(subEnvoice, payload) {
+  const lines = [];
+  lines.push(`Envoice submission${subEnvoice.to ? ' from ' + subEnvoice.to : ''}`);
+  if (subEnvoice.title) lines.push(subEnvoice.title);
+  if (payload.submittedAt) {
+    const d = new Date(payload.submittedAt);
+    lines.push(`Submitted: ${d.toLocaleString()}`);
+  }
+  lines.push('');
+  const multi = subEnvoice.tiers.length > 1;
+  subEnvoice.tiers.forEach(tier => {
+    if (multi && tier.selected !== true) return;
+    const chosen = tier.items.filter(i => i.checked && (i.name || i.price));
+    if (!chosen.length) return;
+    lines.push(`[${tier.name || 'Package'}]`);
+    chosen.forEach(i => {
+      lines.push(`  • ${i.name} — ${subEnvoice.currency} ${fmt(i.price)}`);
+      if (i.desc) lines.push(`      ${i.desc}`);
+    });
+    lines.push('');
+  });
+  lines.push(`TOTAL: ${subEnvoice.currency} ${fmt(totalOf(subEnvoice))}`);
+  return lines.join('\n');
+}
+
+// ── Excel import ─────────────────────────────────────────────────────────────
+async function handleExcelFile(file) {
+  if (typeof XLSX === 'undefined') { showToast('Excel library not loaded.'); return; }
+  const lower = (file.name || '').toLowerCase();
+  if (!lower.endsWith('.xlsx') && !lower.endsWith('.xls')) {
+    showToast('Please drop an .xlsx or .xls file.'); return;
+  }
+  showToast('Parsing Excel…');
+  let newTiers;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    newTiers = parseWorkbook(wb);
+  } catch (e) {
+    console.error(e); showToast('Could not read that file.'); return;
+  }
+  if (!newTiers.length) { showToast('No priced rows found.'); return; }
+
+  const isBlank = envoice.tiers.length === 1
+    && envoice.tiers[0].items.length === 1
+    && !envoice.tiers[0].items[0].name
+    && !envoice.tiers[0].items[0].price;
+
+  if (isBlank) envoice.tiers = newTiers;
+  else envoice.tiers.push(...newTiers);
+
+  if (envoice.tiers.length > 1) envoice.tiers.forEach(t => { t.selected = false; });
+
+  if (!envoice.from) {
+    const guess = (file.name || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+    if (guess) envoice.from = guess;
+  }
+
+  recordNow();
+  publishUrl = null; // content changed → old link stale
+  showToast(`Imported ${newTiers.length} package${newTiers.length === 1 ? '' : 's'}.`);
+  render();
+}
+
+function parseWorkbook(wb) {
+  const tiers = [];
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName];
+    if (!ws) continue;
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+    let headerIdx = -1, priceColIdx = -1, nameColIdx = 0, descColIdx = 1;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i].map(c => String(c == null ? '' : c).trim().toLowerCase());
+      const pi = r.findIndex(c => c === 'price' || c.includes('price (') || c.startsWith('price'));
+      if (pi !== -1) {
+        headerIdx = i; priceColIdx = pi;
+        const ni = r.findIndex(c => c.includes('action') || c.includes('work item') || c === 'service' || c === 'item');
+        if (ni !== -1) nameColIdx = ni;
+        const di = r.findIndex(c => c.includes('scope') || c.includes('deliverable') || c === 'description' || c === 'purpose');
+        if (di !== -1) descColIdx = di;
+        break;
+      }
+    }
+    if (headerIdx === -1) continue;
+
+    const items = [];
+    for (let i = headerIdx + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const name = String(r[nameColIdx] == null ? '' : r[nameColIdx]).trim();
+      if (!name) continue;
+      if (/^total/i.test(name)) continue;
+      const descRaw = r[descColIdx];
+      const desc = String(descRaw == null ? '' : descRaw).trim();
+      const priceRaw = r[priceColIdx];
+      let price = 0;
+      if (typeof priceRaw === 'number' && isFinite(priceRaw)) price = priceRaw;
+      else {
+        const cleaned = String(priceRaw == null ? '' : priceRaw).replace(/[^0-9.\-]/g, '');
+        const parsed = parseFloat(cleaned);
+        price = isFinite(parsed) ? parsed : 0;
+      }
+      items.push({ id: uid(), name, desc, price, checked: true, expanded: false, expandedClient: false });
+    }
+    if (!items.length) continue;
+    tiers.push({ id: uid(), name: sheetName, desc: '', items, selected: false });
+  }
+  return tiers;
+}
+
+// ── Server state (session + received submissions) ────────────────────────────
+async function refreshSession() {
+  try {
+    const r = await fetch('/api/me', { credentials: 'same-origin' });
+    const d = await r.json();
+    owner = d && d.authenticated ? d : null;
+  } catch (e) { owner = null; }
+}
+
+function toInboxItem(s) {
+  return {
+    id: s.id,
+    submittedAt: s.submittedAt,
+    from: (s.summary && s.summary.from) || '',
+    to: (s.summary && s.summary.to) || '',
+    title: (s.summary && s.summary.title) || '',
+    currency: (s.summary && s.summary.currency) || 'KES',
+    total: s.total,
+    customerEmail: s.customerEmail || '',
+    envoice: null
+  };
+}
+
+async function refreshInbox() {
+  if (!owner) return;
+  try {
+    const r = await fetch('/api/submissions', { credentials: 'same-origin' });
+    if (!r.ok) return;
+    const d = await r.json();
+    inboxCache = (d.submissions || []).map(toInboxItem);
+    inboxFromServer = true;
+    if (view === 'creator') render();
+  } catch (e) { /* offline: the local list stands */ }
+}
+
+function ownerField(label, id, type, placeholder) {
+  const row = el('div', { class: 'info-row' });
+  const lbl = el('span', { class: 'info-label' });
+  lbl.textContent = label;
+  const inp = el('input', { class: 'info-input', id: id, type: type, placeholder: placeholder });
+  inp.autocomplete = type === 'password' ? 'current-password' : 'email';
+  row.appendChild(lbl);
+  row.appendChild(inp);
+  return row;
+}
+
+function renderOwnerCard() {
+  const card = el('div', { class: 'info-section card' });
+  if (owner) {
+    const row = el('div', { class: 'info-row' });
+    const lbl = el('span', { class: 'info-label' }); lbl.textContent = 'Owner';
+    const inp = el('input', { class: 'info-input', type: 'text' });
+    inp.value = owner.email || '';
+    inp.readOnly = true;
+    row.appendChild(lbl);
+    row.appendChild(inp);
+    card.appendChild(row);
+    const out = el('button', { class: 'btn-text', type: 'button', style: 'padding-top:0.5rem;' });
+    out.textContent = 'Sign out of Envoice';
+    out.onclick = async () => {
+      try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
+      owner = null; inboxFromServer = false; inboxCache = []; publishUrl = null;
+      render();
+    };
+    card.appendChild(out);
+    return card;
+  }
+  card.appendChild(ownerField('Email', 'ownerEmail', 'email', 'you@example.com'));
+  card.appendChild(ownerField('Password', 'ownerPassword', 'password', 'At least 8 characters'));
+  const hint = el('div', { class: 'share-hint', style: 'margin-top:0.5rem;' });
+  hint.textContent = 'Saved under this email. The same email and password next time signs you back in.';
+  card.appendChild(hint);
+  return card;
+}
+
+function renderCustomerSignup() {
+  const panel = el('div', { class: 'share-panel' });
+  const t = el('div', { class: 'share-panel-title' });
+  t.textContent = 'Optional — keep a copy for yourself';
+  panel.appendChild(t);
+  panel.appendChild(ownerField('Email', 'custEmail', 'email', 'you@example.com'));
+  panel.appendChild(ownerField('Password', 'custPassword', 'password', 'At least 8 characters'));
+  const hint = el('div', { class: 'share-hint' });
+  hint.textContent = 'Sign up and every envoice you submit is saved to your account. Skip it and nothing is kept for you.';
+  panel.appendChild(hint);
+  return panel;
+}
+
+
+// ── Publish (owner) ──────────────────────────────────────────────────────────
+async function publishEnvoice() {
+  const btn = document.querySelector('.btn-primary');
+  const emailIn = document.getElementById('ownerEmail');
+  const passIn = document.getElementById('ownerPassword');
+  const email = owner ? owner.email : (emailIn ? emailIn.value.trim() : '');
+  const password = passIn ? passIn.value : '';
+
+  if (!owner) {
+    if (!email) { showToast('Add your email so this envoice is saved under you.'); if (emailIn) emailIn.focus(); return; }
+    if (!password || password.length < 8) { showToast('Password must be at least 8 characters.'); if (passIn) passIn.focus(); return; }
+  }
+
+  if (btn) { btn.textContent = 'Publishing…'; btn.disabled = true; }
+
+  const payload = JSON.parse(JSON.stringify(envoice));
+  payload.tiers.forEach(t => { t.selected = false; });
+
+  let url = null;
+  try {
+    const res = await fetch('/api/envoices', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: password, envoice: payload })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.message || 'Could not publish. Try again.');
+      if (btn) { btn.textContent = publishUrl ? 'Republish & copy new link' : 'Publish & copy link'; btn.disabled = false; }
+      return;
+    }
+    url = data.url;
+    envoiceId = data.id;
+  } catch (e) {
+    showToast('No connection. Nothing was published.');
+    if (btn) { btn.textContent = 'Publish & copy link'; btn.disabled = false; }
+    return;
+  }
+
+  publishUrl = url;
+  await copyToClipboard(url);
+  showToast('Published — link copied.');
+  await refreshSession();
+  await refreshInbox();
+  render();
+}
+
+// ── Submit (customer) ────────────────────────────────────────────────────────
+async function handleSubmit() {
+  const btn = document.querySelector('.btn-primary');
+  if (btn) { btn.textContent = 'Submitting…'; btn.disabled = true; }
+
+  if (!envoiceId) {
+    showToast('Publish this envoice first so it has a link.');
+    if (btn) { btn.textContent = 'Submit selection'; btn.disabled = false; }
+    return;
+  }
+
+  const custEmailEl = document.getElementById('custEmail');
+  const custPassEl = document.getElementById('custPassword');
+  const signupEmail = (custEmailEl ? custEmailEl.value : '').trim();
+  const signupPassword = custPassEl ? custPassEl.value : '';
+
+  if (signupEmail && (!signupPassword || signupPassword.length < 8)) {
+    showToast('Password must be at least 8 characters.');
+    if (btn) { btn.textContent = 'Submit selection'; btn.disabled = false; }
+    return;
+  }
+
+  const body = {
+    envoiceId: envoiceId,
+    envoice: JSON.parse(JSON.stringify(envoice)),
+    customerName: envoice.to || '',
+    customerEmail: signupEmail
+  };
+  if (signupEmail && signupPassword) body.signup = { email: signupEmail, password: signupPassword };
+
+  let url = null;
+  try {
+    const res = await fetch('/api/submissions', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.message || 'Could not submit. Try again.');
+      if (btn) { btn.textContent = 'Submit selection'; btn.disabled = false; }
+      return;
+    }
+    url = data.url;
+  } catch (e) {
+    showToast('No connection. Selection not submitted.');
+    if (btn) { btn.textContent = 'Submit selection'; btn.disabled = false; }
+    return;
+  }
+
+  submitUrl = url;
+  await copyToClipboard(url);
+  view = 'submitted';
+  render();
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function el(tag, attrs = {}) {
+  const node = document.createElement(tag);
+  Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, v));
+  return node;
+}
+function fmt(n) {
+  const num = parseFloat(n) || 0;
+  return num.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function infoRow(label, field, placeholder, val) {
+  const row = el('div', { class: 'info-row' });
+  const lbl = el('span', { class: 'info-label' }); lbl.textContent = label;
+  const inp = el('input', { class: 'info-input', type: 'text', placeholder, value: val || '' });
+  inp.addEventListener('input', e => {
+    envoice[field] = e.target.value;
+    if (field === 'from') updateBrand();
+    scheduleRecord();
+  });
+  row.appendChild(lbl);
+  row.appendChild(inp);
+  return row;
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), 3000);
+}
+function autoResize(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+function autoResizeAll() {
+  requestAnimationFrame(() => {
+    document.querySelectorAll('textarea.item-desc-input').forEach(autoResize);
+  });
+}
+
+window.__ENVOICE_DATA__ = window.__ENVOICE_DATA__;
+window.__ENVOICE_SUBMITTED__ = window.__ENVOICE_SUBMITTED__;
+
+render();
+
+if (window.__ENVOICE_MISSING__) showToast('That link no longer exists.');
+if (view === 'creator') refreshSession().then(refreshInbox);
+
+})();
+</script>
+</body>
+</html>

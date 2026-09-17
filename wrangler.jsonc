@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "envoice",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    "run_worker_first": ["/api/*", "/e/*", "/s/*"]
+  },
+
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "invocation_logs": true }
+  },
+
+  "vars": {
+    "SESSION_TTL_DAYS": "30"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "envoice-db",
+      "database_id": "20dbdac7-e84c-4e26-bd66-207900ea343e",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Rate limit: 50 req/min per CF-Connecting-IP. namespace_id 2121 = envoice
+  // (registry: ~/Cf-workers/RATE_LIMITER_NAMESPACES.md; 2120 was the last used).
+  "ratelimits": [
+    { "name": "RATE_LIMITER", "namespace_id": "2121", "simple": { "limit": 50, "period": 60 } }
+  ]
+}

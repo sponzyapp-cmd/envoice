@@ -10,11 +10,19 @@ claimed envoice, submission and session in **D1**.
 
 | Route | Serves |
 |---|---|
-| `/` | the app, straight from the asset store |
+| `/` | the app, straight from the asset store — signed in, this is the dashboard |
+| `/new` | the same file, opened straight into the invoice editor |
 | `/e/:id` | the same file + one injected `<script>` with the published envoice |
 | `/s/:id` | the submission — owner detail view when signed in, else the customer's confirmation |
 | `/api/*` | JSON API (see below) |
 | `/health` | `{"ok":true}` |
+
+The dashboard (`/`) lists **My invoices**: everything the account published
+(red **Owner** badge) and everything it filled in as a customer (green
+**Customer** badge), with `+` to start a new one. Every invoice can be
+downloaded as a PDF: the sheet is built from the app's own markup and classes,
+then rasterised to A4 with html2canvas + jsPDF, so the download matches the UI.
+"Copy summary as text" is kept everywhere it was.
 
 The app itself is `public/index.html`. Its CSS and markup are **untouched** from
 the original file; only the data layer talks to the API.
@@ -68,7 +76,9 @@ npx wrangler deploy
 | Method + path | Auth | Purpose |
 |---|---|---|
 | `POST /api/envoices` | session, or `{email,password}` in the body | publish, returns `{id, url, total}` |
+| `GET /api/invoices` | session | dashboard list: owned + filled-as-customer rows |
 | `GET /api/envoices` | session | the owner's published envoices |
+| `GET /api/envoices/:id` | session (owner) | one payload — the dashboard detail and PDF source |
 | `DELETE /api/envoices/:id` | session (owner) | unpublish — the `/e/:id` link dies |
 | `POST /api/submissions` | none (+ optional `signup{email,password}`) | save a customer selection |
 | `GET /api/submissions` | session | owner: everything addressed to them; customer: email match |

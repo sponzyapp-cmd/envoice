@@ -50,6 +50,7 @@ async function handleApi(request, env, ctx, url) {
 
   if (path === '/api/me' && method === 'GET') return apiMe(request, env, ctx);
   if (path === '/api/auth/login' && method === 'POST') return apiLogin(request, env, ctx);
+  if (path === '/api/auth/signup' && method === 'POST') return apiSignup(request, env, ctx);
   if (path === '/api/auth/logout' && method === 'POST') return apiLogout(request, env, ctx);
 
   if (path === '/api/envoices' && method === 'POST') return apiCreateEnvoice(request, env, ctx);
@@ -111,6 +112,29 @@ async function apiLogin(request, env, ctx) {
 async function apiLogout(request, env, ctx) {
   await destroySession(request, env);
   return json({ ok: true }, 200, { 'Set-Cookie': clearCookie() });
+}
+
+// Create an account from the header pill. An email that has already received
+// submissions is a customer; otherwise it is an owner.
+async function apiSignup(request, env, ctx) {
+  const body = await readJson(request);
+  if (!body) return json({ error: 'bad_request' }, 400);
+  const email = String(body.email || '').trim().toLowerCase();
+  const password = String(body.password || '');
+  if (!isValidEmail(email)) return json({ error: 'invalid_email', message: 'Enter a valid email address.' }, 400);
+  if (password.length < MIN_PASSWORD) {
+    return json({ error: 'weak_password', message: `Password must be at least ${MIN_PASSWORD} characters.` }, 400);
+  }
+  if (await findUserByEmail(env, email)) {
+    return json({ error: 'email_taken', message: 'That email already has an account. Sign in instead.' }, 409);
+  }
+  const { results } = await env.DB.prepare(
+    'SELECT 1 AS hit FROM envoice_submissions WHERE customer_email = ? LIMIT 1',
+  ).bind(email).all();
+  const kind = results && results.length ? 'customer' : 'owner';
+  const user = await createUser(env, { email, passwordHash: await hashPassword(password), kind });
+  const session = await createSession(env, user);
+  return json({ ok: true, email: user.email, kind: user.kind }, 201, { 'Set-Cookie': session.cookie });
 }
 
 // Publish. A live session is enough; otherwise the owner's email + password

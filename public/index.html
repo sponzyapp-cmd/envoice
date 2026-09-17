@@ -767,6 +767,8 @@ let envoiceId = window.__ENVOICE_ID__ || null;  // server id of the published en
 let owner = null;                 // signed-in user ({ email, kind }) or null
 let inboxCache = [];              // submissions served from D1
 let inboxFromServer = false;      // true once the API answered
+let authOpen = false;             // header sign-in panel visible
+
 
 
 function blankEnvoice() {
@@ -1054,7 +1056,19 @@ function renderCreator() {
   redoBtn.onclick = redo;
   tools.appendChild(undoBtn);
   tools.appendChild(redoBtn);
+  if (!owner) {
+    const authPill = el('button', { class: 'tier-pill', type: 'button', style: 'align-self:center;' });
+    authPill.textContent = authOpen ? 'Close' : 'Sign in';
+    authPill.onclick = () => {
+      authOpen = !authOpen;
+      render();
+      requestAnimationFrame(() => { const f = document.getElementById('authEmail'); if (f) f.focus(); });
+    };
+    tools.appendChild(authPill);
+  }
   hdr.appendChild(tools);
+
+  if (authOpen && !owner) app.appendChild(renderAuthCard());
   app.appendChild(hdr);
 
   // Info
@@ -2023,13 +2037,71 @@ function renderOwnerCard() {
     card.appendChild(out);
     return card;
   }
-  card.appendChild(ownerField('Email', 'ownerEmail', 'email', 'you@example.com'));
-  card.appendChild(ownerField('Password', 'ownerPassword', 'password', 'At least 8 characters'));
-  const hint = el('div', { class: 'share-hint', style: 'margin-top:0.5rem;' });
-  hint.textContent = 'Saved under this email. The same email and password next time signs you back in.';
+  const hint = el('div', { class: 'share-hint' });
+  hint.textContent = 'You need an account before publishing. Envoices are saved under it.';
   card.appendChild(hint);
+  const row = el('div', { class: 'share-actions', style: 'margin-top:0.75rem;' });
+  const open = el('button', { class: 'share-action', type: 'button' });
+  open.textContent = 'Sign in or create account';
+  open.onclick = () => {
+    authOpen = true;
+    render();
+    requestAnimationFrame(() => { const f = document.getElementById('authEmail'); if (f) f.focus(); });
+  };
+  row.appendChild(open);
+  card.appendChild(row);
   return card;
 }
+
+function renderAuthCard() {
+  const card = el('div', { class: 'info-section card' });
+  const t = el('div', { class: 'share-panel-title' });
+  t.textContent = 'Sign in or create an account';
+  card.appendChild(t);
+  card.appendChild(ownerField('Email', 'authEmail', 'email', 'you@example.com'));
+  card.appendChild(ownerField('Password', 'authPassword', 'password', 'At least 8 characters'));
+  const hint = el('div', { class: 'share-hint' });
+  hint.textContent = 'Owners need an account before their first publish. Customers can sign in to see every envoice they have submitted.';
+  card.appendChild(hint);
+  const row = el('div', { class: 'share-actions', style: 'margin-top:0.75rem;' });
+  const signIn = el('button', { class: 'share-action', type: 'button' });
+  signIn.textContent = 'Sign in';
+  signIn.onclick = () => submitAuth('login');
+  const signUp = el('button', { class: 'share-action', type: 'button' });
+  signUp.textContent = 'Create account';
+  signUp.onclick = () => submitAuth('signup');
+  row.appendChild(signIn);
+  row.appendChild(signUp);
+  card.appendChild(row);
+  return card;
+}
+
+async function submitAuth(mode) {
+  const emailEl = document.getElementById('authEmail');
+  const passEl = document.getElementById('authPassword');
+  const email = (emailEl ? emailEl.value : '').trim();
+  const password = passEl ? passEl.value : '';
+  if (!email) { showToast('Enter your email address.'); return; }
+  if (!password || password.length < 8) { showToast('Password must be at least 8 characters.'); return; }
+  try {
+    const res = await fetch('/api/auth/' + mode, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: password })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(data.message || 'Could not sign you in.'); return; }
+    owner = { email: data.email, kind: data.kind };
+    authOpen = false;
+    showToast(mode === 'signup' ? 'Account created — you are signed in.' : 'Signed in.');
+    await refreshInbox();
+    render();
+  } catch (e) {
+    showToast('No connection. Try again.');
+  }
+}
+
 
 function renderCustomerSignup() {
   const panel = el('div', { class: 'share-panel' });
@@ -2048,14 +2120,12 @@ function renderCustomerSignup() {
 // ── Publish (owner) ──────────────────────────────────────────────────────────
 async function publishEnvoice() {
   const btn = document.querySelector('.btn-primary');
-  const emailIn = document.getElementById('ownerEmail');
-  const passIn = document.getElementById('ownerPassword');
-  const email = owner ? owner.email : (emailIn ? emailIn.value.trim() : '');
-  const password = passIn ? passIn.value : '';
-
   if (!owner) {
-    if (!email) { showToast('Add your email so this envoice is saved under you.'); if (emailIn) emailIn.focus(); return; }
-    if (!password || password.length < 8) { showToast('Password must be at least 8 characters.'); if (passIn) passIn.focus(); return; }
+    authOpen = true;
+    showToast('Sign in or create an account first.');
+    render();
+    requestAnimationFrame(() => { const f = document.getElementById('authEmail'); if (f) f.focus(); });
+    return;
   }
 
   if (btn) { btn.textContent = 'Publishing…'; btn.disabled = true; }
@@ -2069,7 +2139,7 @@ async function publishEnvoice() {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email, password: password, envoice: payload })
+      body: JSON.stringify({ envoice: payload })
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {

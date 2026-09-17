@@ -86,15 +86,17 @@ export async function getSubmission(env, id) {
   return env.DB.prepare('SELECT * FROM envoice_submissions WHERE id = ?').bind(id).first();
 }
 
-// Owner sees everything addressed to them; a customer sees submissions whose
-// customer_email matches their own address. No customer_id column anywhere.
+// Owner sees everything addressed to them; anyone also sees submissions made
+// with their own email. No customer_id column anywhere.
 export async function listSubmissions(env, user) {
-  const sql = user.kind === 'customer'
-    ? `SELECT id, envoice_id, owner_id, total, customer_name, customer_email, submitted_at, payload
-         FROM envoice_submissions WHERE customer_email = ? ORDER BY submitted_at DESC LIMIT 200`
-    : `SELECT id, envoice_id, owner_id, total, customer_name, customer_email, submitted_at, payload
-         FROM envoice_submissions WHERE owner_id = ? ORDER BY submitted_at DESC LIMIT 200`;
-  const { results } = await env.DB.prepare(sql).bind(user.kind === 'customer' ? user.email : user.user_id).all();
+  const { results } = await env.DB.prepare(
+    `SELECT id, envoice_id, owner_id, total, customer_name, customer_email, submitted_at, payload
+       FROM envoice_submissions WHERE owner_id = ?
+     UNION
+     SELECT id, envoice_id, owner_id, total, customer_name, customer_email, submitted_at, payload
+       FROM envoice_submissions WHERE customer_email = ? AND customer_email <> ''
+     ORDER BY submitted_at DESC LIMIT 200`,
+  ).bind(user.user_id, user.email).all();
   return results || [];
 }
 
